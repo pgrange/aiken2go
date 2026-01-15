@@ -62,6 +62,57 @@ func TestLoadBlueprint_Complex(t *testing.T) {
 	}
 }
 
+func TestLoadBlueprint_Tuple(t *testing.T) {
+	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
+	if err != nil {
+		t.Fatalf("failed to load blueprint with tuple types: %v", err)
+	}
+
+	// Check preamble
+	if bp.Preamble.Title != "tuple/test" {
+		t.Errorf("expected title 'tuple/test', got %q", bp.Preamble.Title)
+	}
+
+	// Check that tuple type with array items is loaded correctly
+	tuple2, ok := bp.Definitions["Tuple$Int_ByteArray"]
+	if !ok {
+		t.Fatal("expected to find Tuple$Int_ByteArray definition")
+	}
+	if !tuple2.IsList() {
+		t.Error("Tuple should have dataType list")
+	}
+	if len(tuple2.Items) != 2 {
+		t.Errorf("Tuple$Int_ByteArray should have 2 items, got %d", len(tuple2.Items))
+	}
+	if !tuple2.Items.IsTuple() {
+		t.Error("Tuple$Int_ByteArray.Items should be detected as tuple")
+	}
+
+	// Check 3-element tuple
+	tuple3, ok := bp.Definitions["Tuple$Int_Int_ByteArray"]
+	if !ok {
+		t.Fatal("expected to find Tuple$Int_Int_ByteArray definition")
+	}
+	if len(tuple3.Items) != 3 {
+		t.Errorf("Tuple$Int_Int_ByteArray should have 3 items, got %d", len(tuple3.Items))
+	}
+
+	// Check regular list (single item) still works
+	listInt, ok := bp.Definitions["List$Int"]
+	if !ok {
+		t.Fatal("expected to find List$Int definition")
+	}
+	if len(listInt.Items) != 1 {
+		t.Errorf("List$Int should have 1 item, got %d", len(listInt.Items))
+	}
+	if listInt.Items.IsTuple() {
+		t.Error("List$Int.Items should NOT be detected as tuple")
+	}
+	if listInt.Items.Single() == nil {
+		t.Error("List$Int.Items.Single() should return the single item")
+	}
+}
+
 func TestSchema_RefName(t *testing.T) {
 	tests := []struct {
 		ref      string
@@ -165,7 +216,7 @@ func TestGenerateSimple(t *testing.T) {
 		t.Fatalf("failed to load blueprint: %v", err)
 	}
 
-	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "contracts"})
+	gen := NewGenerator(bp, GeneratorOptions{PackageName: "contracts"})
 	code, err := gen.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate code: %v", err)
@@ -176,14 +227,9 @@ func TestGenerateSimple(t *testing.T) {
 		"package contracts",
 		"import (",
 		`"math/big"`,
-		"type AlwaysTrueScriptSpend struct",
-		"type AlwaysTrueScriptElse struct",
-		"type AlwaysTrueScriptNoParamsSpend struct",
-		"type NestedSometimesTrueScriptSpend struct",
-		"func NewAlwaysTrueScriptSpend(",
-		"func NewAlwaysTrueScriptNoParamsSpend(",
-		"Script     string",
-		"ScriptHash string",
+		`"github.com/pgrange/aiken_to_go/pkg/blueprint"`,
+		"func hexToBytes(",
+		"func bytesToHex(",
 	}
 
 	for _, check := range checks {
@@ -199,7 +245,7 @@ func TestGenerateComplex(t *testing.T) {
 		t.Fatalf("failed to load blueprint: %v", err)
 	}
 
-	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "treasury"})
+	gen := NewGenerator(bp, GeneratorOptions{PackageName: "treasury"})
 	code, err := gen.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate code: %v", err)
@@ -210,6 +256,7 @@ func TestGenerateComplex(t *testing.T) {
 		"package treasury",
 		"type MultisigScript interface",
 		"isMultisigScript()",
+		"ToPlutusData() (blueprint.PlutusData, error)",
 		"type MultisigScriptSignature struct",
 		"type MultisigScriptAllOf struct",
 		"type MultisigScriptAnyOf struct",
@@ -218,21 +265,15 @@ func TestGenerateComplex(t *testing.T) {
 		"type MultisigScriptAfter struct",
 		"type MultisigScriptScript struct",
 		"func (MultisigScriptSignature) isMultisigScript()",
+		"func (v MultisigScriptSignature) ToPlutusData()",
+		"func (v *MultisigScriptSignature) FromPlutusData(",
+		"MultisigScriptFromPlutusData(pd blueprint.PlutusData)",
 		"type PayoutStatus interface",
 		"type PayoutStatusActive struct",
 		"type PayoutStatusPaused struct",
-		"type TreasurySpendRedeemer interface",
-		"type TreasurySpendRedeemerReorganize struct",
-		"type TreasurySpendRedeemerFund struct",
-		"type VendorSpendRedeemer interface",
-		// Single constructor types should be structs
 		"type Payout struct",
 		"type TreasuryConfiguration struct",
 		"type TreasuryPermissions struct",
-		// Validators
-		"type TreasuryTreasurySpend struct",
-		"type VendorVendorSpend struct",
-		"func NewTreasuryTreasurySpend(",
 	}
 
 	for _, check := range checks {
@@ -242,52 +283,28 @@ func TestGenerateComplex(t *testing.T) {
 	}
 }
 
-func TestGenerateWithTrace(t *testing.T) {
-	bp, traceBp, err := LoadBlueprintWithTrace(
-		"../../testdata/simple/plutus.json",
-		"../../testdata/simple/plutus-trace.json",
-	)
+func TestGenerateTuple(t *testing.T) {
+	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
 	if err != nil {
-		t.Fatalf("failed to load blueprints: %v", err)
+		t.Fatalf("failed to load blueprint: %v", err)
 	}
 
-	gen := NewGenerator(bp, traceBp, GeneratorOptions{PackageName: "contracts", WithTrace: true})
+	gen := NewGenerator(bp, GeneratorOptions{PackageName: "tuples"})
 	code, err := gen.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate code: %v", err)
 	}
 
-	// Check for trace parameter handling
+	// Verify the generated code contains expected elements
 	checks := []string{
-		"trace bool",
-		"if trace {",
+		"package tuples",
+		"func hexToBytes(",
+		"func bytesToHex(",
 	}
 
 	for _, check := range checks {
 		if !strings.Contains(code, check) {
-			t.Errorf("generated code missing trace element: %q", check)
-		}
-	}
-}
-
-func TestValidatorNaming(t *testing.T) {
-	gen := &Generator{}
-
-	tests := []struct {
-		title    string
-		expected string
-	}{
-		{"always_true.script.spend", "AlwaysTrueScriptSpend"},
-		{"always_true.script_no_params.else", "AlwaysTrueScriptNoParamsElse"},
-		{"nested/sometimes_true.script.spend", "NestedSometimesTrueScriptSpend"},
-		{"treasury.treasury.spend", "TreasuryTreasurySpend"},
-		{"vendor.vendor.else", "VendorVendorElse"},
-	}
-
-	for _, tc := range tests {
-		got := gen.validatorName(tc.title)
-		if got != tc.expected {
-			t.Errorf("validatorName(%q) = %q, want %q", tc.title, got, tc.expected)
+			t.Errorf("generated code missing expected element: %q", check)
 		}
 	}
 }
@@ -305,13 +322,13 @@ func TestGeneratedCodeCompiles(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Generate code for simple blueprint
-	bp, err := LoadBlueprint("../../testdata/simple/plutus.json")
+	// Generate code for complex blueprint (has actual types)
+	bp, err := LoadBlueprint("../../testdata/complex/plutus.json")
 	if err != nil {
 		t.Fatalf("failed to load blueprint: %v", err)
 	}
 
-	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "contracts"})
+	gen := NewGenerator(bp, GeneratorOptions{PackageName: "contracts"})
 	code, err := gen.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate code: %v", err)
@@ -323,140 +340,28 @@ func TestGeneratedCodeCompiles(t *testing.T) {
 		t.Fatalf("failed to write generated code: %v", err)
 	}
 
-	// Create go.mod
+	// Get module path for replace directive
+	cwd, _ := os.Getwd()
+	modulePath := filepath.Join(cwd, "../..")
+
+	// Create go.mod with replace directive
 	goMod := `module testmod
 
 go 1.21
+
+require github.com/pgrange/aiken_to_go v0.0.0
+
+replace github.com/pgrange/aiken_to_go => ` + modulePath + `
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
 		t.Fatalf("failed to write go.mod: %v", err)
 	}
 
-	// Try to build
-	cmd := exec.Command("go", "build", ".")
-	cmd.Dir = tmpDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Errorf("generated code failed to compile: %v\nOutput: %s\n\nGenerated code:\n%s", err, output, code)
-	}
-}
-
-func TestLoadBlueprint_Tuple(t *testing.T) {
-	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
-	if err != nil {
-		t.Fatalf("failed to load blueprint with tuple types: %v", err)
-	}
-
-	// Check preamble
-	if bp.Preamble.Title != "tuple/test" {
-		t.Errorf("expected title 'tuple/test', got %q", bp.Preamble.Title)
-	}
-
-	// Check that tuple type with array items is loaded correctly
-	tuple2, ok := bp.Definitions["Tuple$Int_ByteArray"]
-	if !ok {
-		t.Fatal("expected to find Tuple$Int_ByteArray definition")
-	}
-	if !tuple2.IsList() {
-		t.Error("Tuple should have dataType list")
-	}
-	if len(tuple2.Items) != 2 {
-		t.Errorf("Tuple$Int_ByteArray should have 2 items, got %d", len(tuple2.Items))
-	}
-	if !tuple2.Items.IsTuple() {
-		t.Error("Tuple$Int_ByteArray.Items should be detected as tuple")
-	}
-
-	// Check 3-element tuple
-	tuple3, ok := bp.Definitions["Tuple$Int_Int_ByteArray"]
-	if !ok {
-		t.Fatal("expected to find Tuple$Int_Int_ByteArray definition")
-	}
-	if len(tuple3.Items) != 3 {
-		t.Errorf("Tuple$Int_Int_ByteArray should have 3 items, got %d", len(tuple3.Items))
-	}
-
-	// Check regular list (single item) still works
-	listInt, ok := bp.Definitions["List$Int"]
-	if !ok {
-		t.Fatal("expected to find List$Int definition")
-	}
-	if len(listInt.Items) != 1 {
-		t.Errorf("List$Int should have 1 item, got %d", len(listInt.Items))
-	}
-	if listInt.Items.IsTuple() {
-		t.Error("List$Int.Items should NOT be detected as tuple")
-	}
-	if listInt.Items.Single() == nil {
-		t.Error("List$Int.Items.Single() should return the single item")
-	}
-}
-
-func TestGenerateTuple(t *testing.T) {
-	// Generate code for tuple blueprint
-	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
-	if err != nil {
-		t.Fatalf("failed to load blueprint: %v", err)
-	}
-
-	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "tuples"})
-	code, err := gen.Generate()
-	if err != nil {
-		t.Fatalf("failed to generate code: %v", err)
-	}
-
-	// Verify the generated code contains expected elements
-	checks := []string{
-		"package tuples",
-		"type TupleValidatorSpend struct",
-		"func NewTupleValidatorSpend()",
-	}
-
-	for _, check := range checks {
-		if !strings.Contains(code, check) {
-			t.Errorf("generated code missing expected element: %q", check)
-		}
-	}
-}
-
-func TestGeneratedCodeCompiles_Complex(t *testing.T) {
-	// Skip if not running in an environment with Go compiler
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go compiler not found, skipping compilation test")
-	}
-
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "aiken2go_test_complex")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Generate code for complex blueprint
-	bp, err := LoadBlueprint("../../testdata/complex/plutus.json")
-	if err != nil {
-		t.Fatalf("failed to load blueprint: %v", err)
-	}
-
-	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "treasury"})
-	code, err := gen.Generate()
-	if err != nil {
-		t.Fatalf("failed to generate code: %v", err)
-	}
-
-	// Write the generated code
-	outFile := filepath.Join(tmpDir, "treasury.go")
-	if err := os.WriteFile(outFile, []byte(code), 0644); err != nil {
-		t.Fatalf("failed to write generated code: %v", err)
-	}
-
-	// Create go.mod
-	goMod := `module testmod
-
-go 1.21
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
-		t.Fatalf("failed to write go.mod: %v", err)
+	// Run go mod tidy
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = tmpDir
+	if output, err := tidyCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed: %v\nOutput: %s", err, output)
 	}
 
 	// Try to build

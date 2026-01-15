@@ -1,10 +1,10 @@
 # aiken2go
 
-Generate Go code from Aiken's CIP-0057 Plutus Blueprint.
+Generate Go types from Aiken's CIP-0057 Plutus Blueprint for building Cardano transactions.
 
 ## Overview
 
-`aiken2go` is a code generator that reads Aiken's `plutus.json` blueprint files and generates Go structs and validator constructors for use in Cardano applications.
+`aiken2go` reads Aiken's `plutus.json` blueprint files and generates Go types that can be serialized to/from CBOR Plutus Data format. This allows you to construct datums and redeemers in Go for Cardano transactions.
 
 ## Requirements
 
@@ -24,22 +24,14 @@ go build -o aiken2go ./cmd/aiken2go
 
 ## Usage
 
-Basic usage:
-
 ```bash
-aiken2go -o contracts.go plutus.json
-```
-
-With traced blueprint (for debug scripts):
-
-```bash
-aiken2go -o contracts.go -t plutus-trace.json plutus.json
+aiken2go -o types.go plutus.json
 ```
 
 With custom package name:
 
 ```bash
-aiken2go -o contracts.go -p mypackage plutus.json
+aiken2go -o types.go -p mypackage plutus.json
 ```
 
 ### Options
@@ -47,8 +39,98 @@ aiken2go -o contracts.go -p mypackage plutus.json
 | Flag | Description |
 |------|-------------|
 | `-o`, `-outfile` | Output file path (required) |
-| `-t`, `-traced-blueprint` | Traced blueprint file for debug scripts (optional) |
 | `-p`, `-package` | Go package name (default: `contracts`) |
+
+## Generated Code
+
+The generator produces:
+
+- **Struct types** for single-constructor types (records)
+- **Interface types** for enums (types with multiple constructors)
+- **Variant structs** for each enum variant
+- **`ToPlutusData()` methods** for serialization
+- **`FromPlutusData()` methods** for deserialization
+- **`<Type>FromPlutusData()` functions** for enum types
+
+### Example
+
+Given an Aiken type:
+
+```aiken
+type PayoutStatus {
+  Active
+  Paused { reason: ByteArray }
+}
+```
+
+The generator produces:
+
+```go
+// PayoutStatus is an enum type with multiple constructors.
+type PayoutStatus interface {
+    isPayoutStatus()
+    ToPlutusData() (blueprint.PlutusData, error)
+}
+
+// PayoutStatusFromPlutusData decodes a PayoutStatus from PlutusData.
+func PayoutStatusFromPlutusData(pd blueprint.PlutusData) (PayoutStatus, error) { ... }
+
+type PayoutStatusActive struct{}
+func (PayoutStatusActive) isPayoutStatus() {}
+func (v PayoutStatusActive) ToPlutusData() (blueprint.PlutusData, error) { ... }
+func (v *PayoutStatusActive) FromPlutusData(pd blueprint.PlutusData) error { ... }
+
+type PayoutStatusPaused struct {
+    Reason string
+}
+func (PayoutStatusPaused) isPayoutStatus() {}
+func (v PayoutStatusPaused) ToPlutusData() (blueprint.PlutusData, error) { ... }
+func (v *PayoutStatusPaused) FromPlutusData(pd blueprint.PlutusData) error { ... }
+```
+
+### Using Generated Types
+
+```go
+import (
+    "github.com/pgrange/aiken_to_go/pkg/blueprint"
+    "myproject/contracts" // generated code
+)
+
+// Create a datum
+datum := contracts.MyDatum{
+    Owner: "deadbeef...",
+    Amount: big.NewInt(1000000),
+}
+
+// Serialize to CBOR for transaction
+pd, err := datum.ToPlutusData()
+if err != nil {
+    return err
+}
+cborBytes, err := pd.MarshalCBOR()
+
+// Or get hex string
+hexString, err := pd.ToHex()
+
+// Deserialize from CBOR
+var decoded contracts.MyDatum
+var pd blueprint.PlutusData
+pd.UnmarshalCBOR(cborBytes)
+decoded.FromPlutusData(pd)
+```
+
+## PlutusData Format
+
+The CBOR encoding follows the Plutus Data format:
+
+| Plutus Type | CBOR Encoding |
+|------------|---------------|
+| Integer | CBOR integer/bignum |
+| ByteString | CBOR bytes |
+| List | CBOR array |
+| Map | CBOR map |
+| Constructor 0-6 | CBOR tag 121-127 + array |
+| Constructor 7+ | CBOR tag 1280+n + array |
 
 ## Testing
 
@@ -58,40 +140,25 @@ Run all tests:
 go test ./...
 ```
 
-Run tests with verbose output:
+Run with verbose output:
 
 ```bash
 go test ./... -v
 ```
 
-Run specific test:
-
-```bash
-go test ./pkg/blueprint -run TestLoadBlueprint_Simple -v
-```
-
 ## Test Data
 
-The `testdata/` directory contains sample Plutus blueprints for testing:
+The `testdata/` directory contains sample Plutus blueprints:
 
 ```
 testdata/
 ├── simple/
-│   ├── plutus.json        # Basic validators with parameters
-│   └── plutus-trace.json  # Traced version for debug builds
+│   └── plutus.json        # Basic validators and types
 ├── complex/
-│   └── plutus.json        # Enum types, nested modules, custom types
+│   └── plutus.json        # Enum types, nested modules
 └── tuple/
     └── plutus.json        # Tuple types (items as array)
 ```
-
-### Test Coverage
-
-| Test File | Description |
-|-----------|-------------|
-| `simple/` | Basic validators, parameters, List and primitive types |
-| `complex/` | Enum types (anyOf), single-constructor structs, nested paths |
-| `tuple/` | Tuple types where `items` is an array of schemas |
 
 ## Project Structure
 
@@ -99,54 +166,22 @@ testdata/
 .
 ├── cmd/
 │   └── aiken2go/
-│       └── main.go          # CLI entry point
+│       └── main.go              # CLI entry point
 ├── pkg/
 │   └── blueprint/
-│       ├── blueprint.go     # Blueprint loading and types
-│       ├── schema.go        # Schema types and helpers
-│       ├── generator.go     # Go code generation
-│       └── generator_test.go
-├── testdata/                # Test blueprints
+│       ├── blueprint.go         # Blueprint loading
+│       ├── schema.go            # Schema types
+│       ├── plutusdata.go        # PlutusData CBOR encoding
+│       ├── generator.go         # Go code generation
+│       └── *_test.go
+├── testdata/                    # Test blueprints
 └── README.md
 ```
 
-## Generated Code
+## Limitations
 
-The generator produces:
-
-- **Type definitions** for custom types in the blueprint
-- **Enum interfaces** for types with multiple constructors (anyOf)
-- **Struct types** for single-constructor types
-- **Validator structs** with `Script` (compiled CBOR hex) and `ScriptHash`
-- **Constructor functions** for each validator
-
-Example output:
-
-```go
-package contracts
-
-import "math/big"
-
-// MultisigScript enum type
-type MultisigScript interface {
-    isMultisigScript()
-}
-
-type MultisigScriptSignature struct {
-    Value string `cbor:"0,keyasint"`
-}
-func (MultisigScriptSignature) isMultisigScript() {}
-
-// Validator
-type MyValidatorSpend struct {
-    Script     string
-    ScriptHash string
-}
-
-func NewMyValidatorSpend(param *big.Int, trace bool) *MyValidatorSpend {
-    // ...
-}
-```
+- Map types (`Pairs$`) are not fully supported for serialization (TODO comments generated)
+- Tuple types are represented as `[]interface{}`
 
 ## License
 

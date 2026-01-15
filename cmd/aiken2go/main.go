@@ -1,9 +1,9 @@
-// aiken2go generates Go code from Aiken's plutus.json (CIP-0057 Plutus Blueprint).
+// aiken2go generates Go types from Aiken's plutus.json (CIP-0057 Plutus Blueprint).
 //
 // Usage:
 //
-//	aiken2go plutus.json -o contracts.go
-//	aiken2go plutus.json -t plutus-trace.json -o contracts.go -p mypackage
+//	aiken2go plutus.json -o types.go
+//	aiken2go plutus.json -o types.go -p mypackage
 package main
 
 import (
@@ -17,25 +17,22 @@ import (
 func main() {
 	var (
 		outfile     string
-		tracedFile  string
 		packageName string
 	)
 
 	flag.StringVar(&outfile, "o", "", "Output file path (required)")
 	flag.StringVar(&outfile, "outfile", "", "Output file path (required)")
-	flag.StringVar(&tracedFile, "t", "", "Traced blueprint file (optional)")
-	flag.StringVar(&tracedFile, "traced-blueprint", "", "Traced blueprint file (optional)")
 	flag.StringVar(&packageName, "p", "contracts", "Go package name")
 	flag.StringVar(&packageName, "package", "contracts", "Go package name")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <plutus.json>\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Generate Go code from Aiken's CIP-0057 Plutus Blueprint.\n\n")
+		fmt.Fprintf(os.Stderr, "Generate Go types from Aiken's CIP-0057 Plutus Blueprint.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  %s plutus.json -o contracts.go\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s plutus.json -t plutus-trace.json -o contracts.go -p mypackage\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o types.go plutus.json\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o types.go -p mypackage plutus.json\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -54,17 +51,16 @@ func main() {
 
 	infile := flag.Arg(0)
 
-	// Load blueprints
-	bp, traceBp, err := blueprint.LoadBlueprintWithTrace(infile, tracedFile)
+	// Load blueprint
+	bp, err := blueprint.LoadBlueprint(infile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading blueprint: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Generate code
-	gen := blueprint.NewGenerator(bp, traceBp, blueprint.GeneratorOptions{
+	gen := blueprint.NewGenerator(bp, blueprint.GeneratorOptions{
 		PackageName: packageName,
-		WithTrace:   tracedFile != "",
 	})
 
 	code, err := gen.Generate()

@@ -63,22 +63,3 @@ func LoadBlueprint(path string) (*Blueprint, error) {
 	return &bp, nil
 }
 
-// LoadBlueprintWithTrace reads both a regular and traced blueprint.
-// The traced blueprint contains debug/trace variants of the compiled code.
-func LoadBlueprintWithTrace(path, tracePath string) (*Blueprint, *Blueprint, error) {
-	bp, err := LoadBlueprint(path)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if tracePath == "" {
-		return bp, nil, nil
-	}
-
-	traceBp, err := LoadBlueprint(tracePath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("loading traced blueprint: %w", err)
-	}
-
-	return bp, traceBp, nil
-}
