@@ -5,6 +5,42 @@ import (
 	"strings"
 )
 
+// SchemaItems represents the items field which can be either a single schema
+// (for homogeneous lists) or an array of schemas (for tuples).
+type SchemaItems []*Schema
+
+// UnmarshalJSON handles both single schema objects and arrays.
+func (s *SchemaItems) UnmarshalJSON(data []byte) error {
+	// First try to unmarshal as an array
+	var arr []*Schema
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*s = arr
+		return nil
+	}
+
+	// Then try to unmarshal as a single schema
+	var single Schema
+	if err := json.Unmarshal(data, &single); err != nil {
+		return err
+	}
+	*s = []*Schema{&single}
+	return nil
+}
+
+// Single returns the first item if this is a single-item list.
+// Used for homogeneous list types.
+func (s SchemaItems) Single() *Schema {
+	if len(s) == 1 {
+		return s[0]
+	}
+	return nil
+}
+
+// IsTuple returns true if items represents a tuple (multiple schemas).
+func (s SchemaItems) IsTuple() bool {
+	return len(s) > 1
+}
+
 // Schema represents a Plutus data schema from the blueprint definitions.
 // It can be a primitive type (integer, bytes), a reference ($ref),
 // a list, a map, a constructor, or an enum (anyOf).
@@ -19,8 +55,8 @@ type Schema struct {
 	// DataType for primitive types: "integer", "bytes", "list", "map", "constructor"
 	DataType string `json:"dataType,omitempty"`
 
-	// For list types
-	Items *Schema `json:"items,omitempty"`
+	// For list types - can be a single schema (homogeneous list) or array of schemas (tuple)
+	Items SchemaItems `json:"items,omitempty"`
 
 	// For map types
 	Keys   *Schema `json:"keys,omitempty"`
@@ -126,7 +162,7 @@ func (s *Schema) IsOpaque() bool {
 
 // IsEmpty returns true if this schema has no meaningful content.
 func (s *Schema) IsEmpty() bool {
-	return s.DataType == "" && s.Ref == "" && len(s.AnyOf) == 0 && s.Title == "" && s.Items == nil
+	return s.DataType == "" && s.Ref == "" && len(s.AnyOf) == 0 && s.Title == "" && len(s.Items) == 0
 }
 
 // IsSingleConstructor returns true if this is an enum with a single constructor.

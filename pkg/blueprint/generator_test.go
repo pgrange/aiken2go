@@ -96,7 +96,7 @@ func TestSchema_TypeDetection(t *testing.T) {
 	}
 
 	// Test list
-	listSchema := &Schema{DataType: "list", Items: &Schema{DataType: "integer"}}
+	listSchema := &Schema{DataType: "list", Items: SchemaItems{&Schema{DataType: "integer"}}}
 	if !listSchema.IsList() {
 		t.Error("should detect list type")
 	}
@@ -338,6 +338,84 @@ go 1.21
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Errorf("generated code failed to compile: %v\nOutput: %s\n\nGenerated code:\n%s", err, output, code)
+	}
+}
+
+func TestLoadBlueprint_Tuple(t *testing.T) {
+	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
+	if err != nil {
+		t.Fatalf("failed to load blueprint with tuple types: %v", err)
+	}
+
+	// Check preamble
+	if bp.Preamble.Title != "tuple/test" {
+		t.Errorf("expected title 'tuple/test', got %q", bp.Preamble.Title)
+	}
+
+	// Check that tuple type with array items is loaded correctly
+	tuple2, ok := bp.Definitions["Tuple$Int_ByteArray"]
+	if !ok {
+		t.Fatal("expected to find Tuple$Int_ByteArray definition")
+	}
+	if !tuple2.IsList() {
+		t.Error("Tuple should have dataType list")
+	}
+	if len(tuple2.Items) != 2 {
+		t.Errorf("Tuple$Int_ByteArray should have 2 items, got %d", len(tuple2.Items))
+	}
+	if !tuple2.Items.IsTuple() {
+		t.Error("Tuple$Int_ByteArray.Items should be detected as tuple")
+	}
+
+	// Check 3-element tuple
+	tuple3, ok := bp.Definitions["Tuple$Int_Int_ByteArray"]
+	if !ok {
+		t.Fatal("expected to find Tuple$Int_Int_ByteArray definition")
+	}
+	if len(tuple3.Items) != 3 {
+		t.Errorf("Tuple$Int_Int_ByteArray should have 3 items, got %d", len(tuple3.Items))
+	}
+
+	// Check regular list (single item) still works
+	listInt, ok := bp.Definitions["List$Int"]
+	if !ok {
+		t.Fatal("expected to find List$Int definition")
+	}
+	if len(listInt.Items) != 1 {
+		t.Errorf("List$Int should have 1 item, got %d", len(listInt.Items))
+	}
+	if listInt.Items.IsTuple() {
+		t.Error("List$Int.Items should NOT be detected as tuple")
+	}
+	if listInt.Items.Single() == nil {
+		t.Error("List$Int.Items.Single() should return the single item")
+	}
+}
+
+func TestGenerateTuple(t *testing.T) {
+	// Generate code for tuple blueprint
+	bp, err := LoadBlueprint("../../testdata/tuple/plutus.json")
+	if err != nil {
+		t.Fatalf("failed to load blueprint: %v", err)
+	}
+
+	gen := NewGenerator(bp, nil, GeneratorOptions{PackageName: "tuples"})
+	code, err := gen.Generate()
+	if err != nil {
+		t.Fatalf("failed to generate code: %v", err)
+	}
+
+	// Verify the generated code contains expected elements
+	checks := []string{
+		"package tuples",
+		"type TupleValidatorSpend struct",
+		"func NewTupleValidatorSpend()",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(code, check) {
+			t.Errorf("generated code missing expected element: %q", check)
+		}
 	}
 }
 

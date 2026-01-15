@@ -305,8 +305,13 @@ func (g *Generator) schemaToGoType(schema *Schema) string {
 	case schema.IsBytes():
 		return "string" // hex encoded
 	case schema.IsList():
-		if schema.Items != nil {
-			itemType := g.schemaToGoType(schema.Items)
+		if len(schema.Items) > 0 {
+			if schema.Items.IsTuple() {
+				// Tuple type - represent as struct or slice of interfaces
+				// For now, use a slice of interfaces since Go doesn't have tuples
+				return "[]interface{}"
+			}
+			itemType := g.schemaToGoType(schema.Items.Single())
 			return "[]" + itemType
 		}
 		return "[]interface{}"
