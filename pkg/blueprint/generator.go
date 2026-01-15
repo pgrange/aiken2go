@@ -1308,6 +1308,12 @@ func (g *Generator) toGoIdentifier(s string) string {
 	if s == "" {
 		return ""
 	}
+	// Remove or replace characters invalid in Go identifiers
+	// Valid: letters, digits, underscore (but can't start with digit)
+	s = strings.ReplaceAll(s, "/", "_")
+	s = strings.ReplaceAll(s, "-", "_")
+	s = strings.ReplaceAll(s, ".", "_")
+	s = strings.ReplaceAll(s, " ", "_")
 	s = g.snakeToCamel(s)
 	runes := []rune(s)
 	if len(runes) > 0 {
