@@ -65,9 +65,9 @@ func TestAdvancedTypes(t *testing.T) {
 
 	// Test 4: Tuple types should be generated as structs with Field0, Field1, etc.
 	t.Run("TupleTypes", func(t *testing.T) {
-		// Asset tuple type
-		if !strings.Contains(code, "type Asset struct") {
-			t.Error("Expected Asset tuple type to be generated as struct")
+		// Asset tuple type (now CustomAsset with full path)
+		if !strings.Contains(code, "type CustomAsset struct") {
+			t.Error("Expected CustomAsset tuple type to be generated as struct")
 		}
 		// Check for tuple fields
 		if !strings.Contains(code, "Field0 string") {
@@ -84,17 +84,17 @@ func TestAdvancedTypes(t *testing.T) {
 
 	// Test 5: Option with enum inner type should use factory function
 	t.Run("OptionWithEnum", func(t *testing.T) {
-		// Check for factory function usage
-		if !strings.Contains(code, "CredentialFromPlutusData(") {
-			t.Error("Expected CredentialFromPlutusData factory function to be used")
+		// Check for factory function usage (now CustomCredentialFromPlutusData)
+		if !strings.Contains(code, "CustomCredentialFromPlutusData(") {
+			t.Error("Expected CustomCredentialFromPlutusData factory function to be used")
 		}
 	})
 
 	// Test 6: Enum wrapper types (single-field variants with primitive wrapper)
 	t.Run("EnumWrapperWithPrimitive", func(t *testing.T) {
 		// CredentialVerificationKey should have Value string (KeyHash is bytes)
-		if !strings.Contains(code, "type CredentialVerificationKey struct") {
-			t.Error("Expected CredentialVerificationKey struct to be generated")
+		if !strings.Contains(code, "type CustomCredentialVerificationKey struct") {
+			t.Error("Expected CustomCredentialVerificationKey struct to be generated")
 		}
 	})
 
@@ -107,16 +107,16 @@ func TestAdvancedTypes(t *testing.T) {
 
 	// Test 8: Named list types (like SignatureList)
 	t.Run("NamedListType", func(t *testing.T) {
-		if !strings.Contains(code, "type SignatureList []Credential") {
-			t.Error("Expected SignatureList to be generated as type alias for []Credential")
+		if !strings.Contains(code, "type CustomSignatureList []CustomCredential") {
+			t.Error("Expected CustomSignatureList to be generated as type alias for []CustomCredential")
 		}
 		// Check for ToPlutusData method
-		if !strings.Contains(code, "func (v SignatureList) ToPlutusData()") {
-			t.Error("Expected SignatureList to have ToPlutusData method")
+		if !strings.Contains(code, "func (v CustomSignatureList) ToPlutusData()") {
+			t.Error("Expected CustomSignatureList to have ToPlutusData method")
 		}
 		// Check for FromPlutusData method
-		if !strings.Contains(code, "func (v *SignatureList) FromPlutusData(") {
-			t.Error("Expected SignatureList to have FromPlutusData method")
+		if !strings.Contains(code, "func (v *CustomSignatureList) FromPlutusData(") {
+			t.Error("Expected CustomSignatureList to have FromPlutusData method")
 		}
 	})
 }
@@ -246,13 +246,13 @@ func main() {
 	var failed bool
 
 	// Test Token with primitive wrappers (PolicyId, AssetName as bytes, Amount as int)
-	token := types.Token{
+	token := types.CustomToken{
 		PolicyId:  "abcd1234",
 		AssetName: "546f6b656e", // "Token"
 		Amount:    big.NewInt(1000),
 	}
-	if err := testRoundTrip("Token", token, func(pd types.PlutusData) (types.Token, error) {
-		var v types.Token
+	if err := testRoundTrip("Token", token, func(pd types.PlutusData) (types.CustomToken, error) {
+		var v types.CustomToken
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -260,12 +260,12 @@ func main() {
 	}
 
 	// Test WithBoolRef (Bool as ref)
-	withBool := types.WithBoolRef{
+	withBool := types.CustomWithBoolRef{
 		Name:   "74657374", // "test"
 		Active: true,
 	}
-	if err := testRoundTrip("WithBoolRef", withBool, func(pd types.PlutusData) (types.WithBoolRef, error) {
-		var v types.WithBoolRef
+	if err := testRoundTrip("WithBoolRef", withBool, func(pd types.PlutusData) (types.CustomWithBoolRef, error) {
+		var v types.CustomWithBoolRef
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -273,12 +273,12 @@ func main() {
 	}
 
 	// Test Asset tuple type (values must be valid hex strings)
-	asset := types.Asset{
+	asset := types.CustomAsset{
 		Field0: "abcdef123456", // policy id as hex
 		Field1: "546f6b656e",   // "Token" as hex
 	}
-	if err := testRoundTrip("Asset", asset, func(pd types.PlutusData) (types.Asset, error) {
-		var v types.Asset
+	if err := testRoundTrip("Asset", asset, func(pd types.PlutusData) (types.CustomAsset, error) {
+		var v types.CustomAsset
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -299,12 +299,12 @@ func main() {
 	}
 
 	// Test Address with Option<Credential> (hex values)
-	addr := types.Address{
-		Payment: types.CredentialVerificationKey{Value: "aabbccdd1122"},
-		Stake:   types.OptionCredential{IsSet: false},
+	addr := types.CustomAddress{
+		Payment: types.CustomCredentialVerificationKey{Value: "aabbccdd1122"},
+		Stake:   types.OptionCustomCredential{IsSet: false},
 	}
-	if err := testRoundTrip("Address", addr, func(pd types.PlutusData) (types.Address, error) {
-		var v types.Address
+	if err := testRoundTrip("Address", addr, func(pd types.PlutusData) (types.CustomAddress, error) {
+		var v types.CustomAddress
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -312,12 +312,12 @@ func main() {
 	}
 
 	// Test Address with Some(Credential) (hex values)
-	addrWithStake := types.Address{
-		Payment: types.CredentialScript{Value: "112233445566"},
-		Stake:   types.OptionCredential{Value: types.CredentialVerificationKey{Value: "778899aabbcc"}, IsSet: true},
+	addrWithStake := types.CustomAddress{
+		Payment: types.CustomCredentialScript{Value: "112233445566"},
+		Stake:   types.OptionCustomCredential{Value: types.CustomCredentialVerificationKey{Value: "778899aabbcc"}, IsSet: true},
 	}
-	if err := testRoundTrip("Address(with stake)", addrWithStake, func(pd types.PlutusData) (types.Address, error) {
-		var v types.Address
+	if err := testRoundTrip("Address(with stake)", addrWithStake, func(pd types.PlutusData) (types.CustomAddress, error) {
+		var v types.CustomAddress
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -325,12 +325,12 @@ func main() {
 	}
 
 	// Test WithData (Data type as interface{})
-	withData := types.WithData{
+	withData := types.CustomWithData{
 		Label: "6c6162656c", // "label"
 		Data:  types.NewConstrPlutusData(0, types.NewIntPlutusData(big.NewInt(123))),
 	}
-	if err := testRoundTrip("WithData", withData, func(pd types.PlutusData) (types.WithData, error) {
-		var v types.WithData
+	if err := testRoundTrip("WithData", withData, func(pd types.PlutusData) (types.CustomWithData, error) {
+		var v types.CustomWithData
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -338,11 +338,11 @@ func main() {
 	}
 
 	// Test DatumInlineDatum (enum variant with Data)
-	inlineDatum := types.DatumInlineDatum{
+	inlineDatum := types.CustomDatumInlineDatum{
 		Value: types.NewBytesPlutusData([]byte{1, 2, 3}),
 	}
-	if err := testRoundTrip("DatumInlineDatum", inlineDatum, func(pd types.PlutusData) (types.DatumInlineDatum, error) {
-		var v types.DatumInlineDatum
+	if err := testRoundTrip("DatumInlineDatum", inlineDatum, func(pd types.PlutusData) (types.CustomDatumInlineDatum, error) {
+		var v types.CustomDatumInlineDatum
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -350,11 +350,11 @@ func main() {
 	}
 
 	// Test WithPolicyList (list of primitive wrappers - hex values)
-	withPolicyList := types.WithPolicyList{
+	withPolicyList := types.CustomWithPolicyList{
 		Policies: []string{"aabb11", "ccdd22", "eeff33"},
 	}
-	if err := testRoundTrip("WithPolicyList", withPolicyList, func(pd types.PlutusData) (types.WithPolicyList, error) {
-		var v types.WithPolicyList
+	if err := testRoundTrip("WithPolicyList", withPolicyList, func(pd types.PlutusData) (types.CustomWithPolicyList, error) {
+		var v types.CustomWithPolicyList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

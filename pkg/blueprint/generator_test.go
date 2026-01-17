@@ -253,28 +253,29 @@ func TestGenerateComplex(t *testing.T) {
 	}
 
 	// Check for enum types (interface + variants)
+	// Type names now include full path to avoid collisions
 	checks := []string{
 		"package treasury",
-		"type MultisigScript interface",
-		"isMultisigScript()",
+		"type MultisigMultisigScript interface",
+		"isMultisigMultisigScript()",
 		"ToPlutusData() (PlutusData, error)",
-		"type MultisigScriptSignature struct",
-		"type MultisigScriptAllOf struct",
-		"type MultisigScriptAnyOf struct",
-		"type MultisigScriptAtLeast struct",
-		"type MultisigScriptBefore struct",
-		"type MultisigScriptAfter struct",
-		"type MultisigScriptScript struct",
-		"func (MultisigScriptSignature) isMultisigScript()",
-		"func (v MultisigScriptSignature) ToPlutusData()",
-		"func (v *MultisigScriptSignature) FromPlutusData(",
-		"MultisigScriptFromPlutusData(pd PlutusData)",
-		"type PayoutStatus interface",
-		"type PayoutStatusActive struct",
-		"type PayoutStatusPaused struct",
-		"type Payout struct",
-		"type TreasuryConfiguration struct",
-		"type TreasuryPermissions struct",
+		"type MultisigMultisigScriptSignature struct",
+		"type MultisigMultisigScriptAllOf struct",
+		"type MultisigMultisigScriptAnyOf struct",
+		"type MultisigMultisigScriptAtLeast struct",
+		"type MultisigMultisigScriptBefore struct",
+		"type MultisigMultisigScriptAfter struct",
+		"type MultisigMultisigScriptScript struct",
+		"func (MultisigMultisigScriptSignature) isMultisigMultisigScript()",
+		"func (v MultisigMultisigScriptSignature) ToPlutusData()",
+		"func (v *MultisigMultisigScriptSignature) FromPlutusData(",
+		"MultisigMultisigScriptFromPlutusData(pd PlutusData)",
+		"type TypesPayoutStatus interface",
+		"type TypesPayoutStatusActive struct",
+		"type TypesPayoutStatusPaused struct",
+		"type TypesPayout struct",
+		"type TypesTreasuryConfiguration struct",
+		"type TypesTreasuryPermissions struct",
 	}
 
 	for _, check := range checks {

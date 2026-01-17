@@ -1999,9 +1999,9 @@ func (g *Generator) pairsToGoType(refName string) string {
 func (g *Generator) normalizeTypeName(name string) string {
 	// Handle prefixes like Option$, List$, etc.
 	// Examples:
-	//   Option$string_validator/SimpleString -> OptionSimpleString
-	//   Option$custom~1Credential -> OptionCredential
-	//   string_validator/SimpleString -> SimpleString
+	//   Option$string_validator/SimpleString -> OptionStringValidatorSimpleString
+	//   Option$custom/Credential -> OptionCustomCredential
+	//   v0_3/types/Settings -> V03TypesSettings
 	//   Option$Int -> OptionInt
 	//   List$Int -> ListInt
 
@@ -2018,10 +2018,14 @@ func (g *Generator) normalizeTypeName(name string) string {
 		return g.toGoIdentifier(prefix) + innerName
 	}
 
-	// No $, just split by / and take the last part
+	// Include the full path to avoid name collisions
+	// e.g., v0_3/types/Settings -> V03TypesSettings
 	parts := strings.Split(name, "/")
-	typeName := parts[len(parts)-1]
-	return g.toGoIdentifier(typeName)
+	var result strings.Builder
+	for _, part := range parts {
+		result.WriteString(g.toGoIdentifier(part))
+	}
+	return result.String()
 }
 
 func (g *Generator) normalizeFieldName(name string, index int) string {

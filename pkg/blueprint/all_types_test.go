@@ -88,10 +88,10 @@ func testRoundTrip[T interface {
 func main() {
 	var failed bool
 
-	// Test SimpleString
-	simpleString := types.SimpleString{Message: "48656c6c6f"} // "Hello"
-	if err := testRoundTrip("SimpleString", simpleString, func(pd types.PlutusData) (types.SimpleString, error) {
-		var v types.SimpleString
+	// Test SimpleString (now StringValidatorSimpleString with full path)
+	simpleString := types.StringValidatorSimpleString{Message: "48656c6c6f"} // "Hello"
+	if err := testRoundTrip("SimpleString", simpleString, func(pd types.PlutusData) (types.StringValidatorSimpleString, error) {
+		var v types.StringValidatorSimpleString
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -99,9 +99,9 @@ func main() {
 	}
 
 	// Test SimpleInt
-	simpleInt := types.SimpleInt{Value: big.NewInt(42)}
-	if err := testRoundTrip("SimpleInt", simpleInt, func(pd types.PlutusData) (types.SimpleInt, error) {
-		var v types.SimpleInt
+	simpleInt := types.StringValidatorSimpleInt{Value: big.NewInt(42)}
+	if err := testRoundTrip("SimpleInt", simpleInt, func(pd types.PlutusData) (types.StringValidatorSimpleInt, error) {
+		var v types.StringValidatorSimpleInt
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -109,13 +109,13 @@ func main() {
 	}
 
 	// Test MultipleFields with Bool
-	multipleFields := types.MultipleFields{
+	multipleFields := types.StringValidatorMultipleFields{
 		Name:   "416c696365", // "Alice"
 		Age:    big.NewInt(30),
 		Active: true,
 	}
-	if err := testRoundTrip("MultipleFields", multipleFields, func(pd types.PlutusData) (types.MultipleFields, error) {
-		var v types.MultipleFields
+	if err := testRoundTrip("MultipleFields", multipleFields, func(pd types.PlutusData) (types.StringValidatorMultipleFields, error) {
+		var v types.StringValidatorMultipleFields
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -123,11 +123,11 @@ func main() {
 	}
 
 	// Test WithList (list of ints)
-	withList := types.WithList{
+	withList := types.StringValidatorWithList{
 		Items: []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)},
 	}
-	if err := testRoundTrip("WithList", withList, func(pd types.PlutusData) (types.WithList, error) {
-		var v types.WithList
+	if err := testRoundTrip("WithList", withList, func(pd types.PlutusData) (types.StringValidatorWithList, error) {
+		var v types.StringValidatorWithList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -135,11 +135,11 @@ func main() {
 	}
 
 	// Test WithStringList (list of strings)
-	withStringList := types.WithStringList{
+	withStringList := types.StringValidatorWithStringList{
 		Names: []string{"416c696365", "426f62"}, // "Alice", "Bob"
 	}
-	if err := testRoundTrip("WithStringList", withStringList, func(pd types.PlutusData) (types.WithStringList, error) {
-		var v types.WithStringList
+	if err := testRoundTrip("WithStringList", withStringList, func(pd types.PlutusData) (types.StringValidatorWithStringList, error) {
+		var v types.StringValidatorWithStringList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -147,12 +147,12 @@ func main() {
 	}
 
 	// Test WithOption (with Some value)
-	withOptionSome := types.WithOption{
+	withOptionSome := types.StringValidatorWithOption{
 		Label:      "6c6162656c", // "label"
 		MaybeValue: types.OptionInt{Value: big.NewInt(100), IsSet: true},
 	}
-	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd types.PlutusData) (types.WithOption, error) {
-		var v types.WithOption
+	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
+		var v types.StringValidatorWithOption
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -160,12 +160,12 @@ func main() {
 	}
 
 	// Test WithOption (with None)
-	withOptionNone := types.WithOption{
+	withOptionNone := types.StringValidatorWithOption{
 		Label:      "6c6162656c", // "label"
 		MaybeValue: types.OptionInt{IsSet: false},
 	}
-	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd types.PlutusData) (types.WithOption, error) {
-		var v types.WithOption
+	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
+		var v types.StringValidatorWithOption
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -173,9 +173,9 @@ func main() {
 	}
 
 	// Test Status enum - Active variant
-	statusActive := types.StatusActive{}
-	if err := testRoundTrip("StatusActive", statusActive, func(pd types.PlutusData) (types.StatusActive, error) {
-		var v types.StatusActive
+	statusActive := types.StringValidatorStatusActive{}
+	if err := testRoundTrip("StatusActive", statusActive, func(pd types.PlutusData) (types.StringValidatorStatusActive, error) {
+		var v types.StringValidatorStatusActive
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -183,9 +183,9 @@ func main() {
 	}
 
 	// Test Status enum - Inactive variant
-	statusInactive := types.StatusInactive{}
-	if err := testRoundTrip("StatusInactive", statusInactive, func(pd types.PlutusData) (types.StatusInactive, error) {
-		var v types.StatusInactive
+	statusInactive := types.StringValidatorStatusInactive{}
+	if err := testRoundTrip("StatusInactive", statusInactive, func(pd types.PlutusData) (types.StringValidatorStatusInactive, error) {
+		var v types.StringValidatorStatusInactive
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -193,9 +193,9 @@ func main() {
 	}
 
 	// Test Status enum - Pending variant with data
-	statusPending := types.StatusPending{Reason: "74657374"} // "test"
-	if err := testRoundTrip("StatusPending", statusPending, func(pd types.PlutusData) (types.StatusPending, error) {
-		var v types.StatusPending
+	statusPending := types.StringValidatorStatusPending{Reason: "74657374"} // "test"
+	if err := testRoundTrip("StatusPending", statusPending, func(pd types.PlutusData) (types.StringValidatorStatusPending, error) {
+		var v types.StringValidatorStatusPending
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -203,12 +203,12 @@ func main() {
 	}
 
 	// Test Nested type
-	nested := types.Nested{
-		Inner: types.SimpleString{Message: "696e6e6572"}, // "inner"
+	nested := types.StringValidatorNested{
+		Inner: types.StringValidatorSimpleString{Message: "696e6e6572"}, // "inner"
 		Count: big.NewInt(5),
 	}
-	if err := testRoundTrip("Nested", nested, func(pd types.PlutusData) (types.Nested, error) {
-		var v types.Nested
+	if err := testRoundTrip("Nested", nested, func(pd types.PlutusData) (types.StringValidatorNested, error) {
+		var v types.StringValidatorNested
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -216,12 +216,12 @@ func main() {
 	}
 
 	// Test WithEnum (struct containing enum)
-	withEnum := types.WithEnum{
+	withEnum := types.StringValidatorWithEnum{
 		Id:     "6d7969640a", // "myid"
-		Status: types.StatusActive{},
+		Status: types.StringValidatorStatusActive{},
 	}
-	if err := testRoundTrip("WithEnum", withEnum, func(pd types.PlutusData) (types.WithEnum, error) {
-		var v types.WithEnum
+	if err := testRoundTrip("WithEnum", withEnum, func(pd types.PlutusData) (types.StringValidatorWithEnum, error) {
+		var v types.StringValidatorWithEnum
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -229,14 +229,14 @@ func main() {
 	}
 
 	// Test WithRecordList (list of structs)
-	withRecordList := types.WithRecordList{
-		Entries: []types.SimpleString{
+	withRecordList := types.StringValidatorWithRecordList{
+		Entries: []types.StringValidatorSimpleString{
 			{Message: "6f6e65"},   // "one"
 			{Message: "74776f"},  // "two"
 		},
 	}
-	if err := testRoundTrip("WithRecordList", withRecordList, func(pd types.PlutusData) (types.WithRecordList, error) {
-		var v types.WithRecordList
+	if err := testRoundTrip("WithRecordList", withRecordList, func(pd types.PlutusData) (types.StringValidatorWithRecordList, error) {
+		var v types.StringValidatorWithRecordList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -244,14 +244,14 @@ func main() {
 	}
 
 	// Test WithOptionalNested
-	withOptionalNested := types.WithOptionalNested{
-		Data: types.OptionSimpleString{
-			Value: types.SimpleString{Message: "6f7074"},
+	withOptionalNested := types.StringValidatorWithOptionalNested{
+		Data: types.OptionStringValidatorSimpleString{
+			Value: types.StringValidatorSimpleString{Message: "6f7074"},
 			IsSet: true,
 		},
 	}
-	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd types.PlutusData) (types.WithOptionalNested, error) {
-		var v types.WithOptionalNested
+	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd types.PlutusData) (types.StringValidatorWithOptionalNested, error) {
+		var v types.StringValidatorWithOptionalNested
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

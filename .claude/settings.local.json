@@ -12,7 +12,11 @@
       "Bash(go mod tidy:*)",
       "Bash(./aiken2go:*)",
       "Bash(ls:*)",
-      "Bash(aiken:*)"
+      "Bash(aiken:*)",
+      "Bash(for v in v0_1 v0_2 v0_3)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)"
     ]
   }
 }
