@@ -50,13 +50,12 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/pgrange/aiken_to_go/pkg/blueprint"
 	"testpkg/types"
 )
 
 func testRoundTrip[T interface {
-	ToPlutusData() (blueprint.PlutusData, error)
-}](name string, original T, decode func(blueprint.PlutusData) (T, error)) error {
+	ToPlutusData() (types.PlutusData, error)
+}](name string, original T, decode func(types.PlutusData) (T, error)) error {
 	// Serialize to PlutusData
 	pd, err := original.ToPlutusData()
 	if err != nil {
@@ -70,7 +69,7 @@ func testRoundTrip[T interface {
 	}
 
 	// Deserialize from CBOR
-	var decodedPd blueprint.PlutusData
+	var decodedPd types.PlutusData
 	if err := decodedPd.UnmarshalCBOR(cborBytes); err != nil {
 		return fmt.Errorf("%s UnmarshalCBOR: %v", name, err)
 	}
@@ -91,7 +90,7 @@ func main() {
 
 	// Test SimpleString
 	simpleString := types.SimpleString{Message: "48656c6c6f"} // "Hello"
-	if err := testRoundTrip("SimpleString", simpleString, func(pd blueprint.PlutusData) (types.SimpleString, error) {
+	if err := testRoundTrip("SimpleString", simpleString, func(pd types.PlutusData) (types.SimpleString, error) {
 		var v types.SimpleString
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -101,7 +100,7 @@ func main() {
 
 	// Test SimpleInt
 	simpleInt := types.SimpleInt{Value: big.NewInt(42)}
-	if err := testRoundTrip("SimpleInt", simpleInt, func(pd blueprint.PlutusData) (types.SimpleInt, error) {
+	if err := testRoundTrip("SimpleInt", simpleInt, func(pd types.PlutusData) (types.SimpleInt, error) {
 		var v types.SimpleInt
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -115,7 +114,7 @@ func main() {
 		Age:    big.NewInt(30),
 		Active: true,
 	}
-	if err := testRoundTrip("MultipleFields", multipleFields, func(pd blueprint.PlutusData) (types.MultipleFields, error) {
+	if err := testRoundTrip("MultipleFields", multipleFields, func(pd types.PlutusData) (types.MultipleFields, error) {
 		var v types.MultipleFields
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -127,7 +126,7 @@ func main() {
 	withList := types.WithList{
 		Items: []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)},
 	}
-	if err := testRoundTrip("WithList", withList, func(pd blueprint.PlutusData) (types.WithList, error) {
+	if err := testRoundTrip("WithList", withList, func(pd types.PlutusData) (types.WithList, error) {
 		var v types.WithList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -139,7 +138,7 @@ func main() {
 	withStringList := types.WithStringList{
 		Names: []string{"416c696365", "426f62"}, // "Alice", "Bob"
 	}
-	if err := testRoundTrip("WithStringList", withStringList, func(pd blueprint.PlutusData) (types.WithStringList, error) {
+	if err := testRoundTrip("WithStringList", withStringList, func(pd types.PlutusData) (types.WithStringList, error) {
 		var v types.WithStringList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -152,7 +151,7 @@ func main() {
 		Label:      "6c6162656c", // "label"
 		MaybeValue: types.OptionInt{Value: big.NewInt(100), IsSet: true},
 	}
-	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd blueprint.PlutusData) (types.WithOption, error) {
+	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd types.PlutusData) (types.WithOption, error) {
 		var v types.WithOption
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -165,7 +164,7 @@ func main() {
 		Label:      "6c6162656c", // "label"
 		MaybeValue: types.OptionInt{IsSet: false},
 	}
-	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd blueprint.PlutusData) (types.WithOption, error) {
+	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd types.PlutusData) (types.WithOption, error) {
 		var v types.WithOption
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -175,7 +174,7 @@ func main() {
 
 	// Test Status enum - Active variant
 	statusActive := types.StatusActive{}
-	if err := testRoundTrip("StatusActive", statusActive, func(pd blueprint.PlutusData) (types.StatusActive, error) {
+	if err := testRoundTrip("StatusActive", statusActive, func(pd types.PlutusData) (types.StatusActive, error) {
 		var v types.StatusActive
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -185,7 +184,7 @@ func main() {
 
 	// Test Status enum - Inactive variant
 	statusInactive := types.StatusInactive{}
-	if err := testRoundTrip("StatusInactive", statusInactive, func(pd blueprint.PlutusData) (types.StatusInactive, error) {
+	if err := testRoundTrip("StatusInactive", statusInactive, func(pd types.PlutusData) (types.StatusInactive, error) {
 		var v types.StatusInactive
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -195,7 +194,7 @@ func main() {
 
 	// Test Status enum - Pending variant with data
 	statusPending := types.StatusPending{Reason: "74657374"} // "test"
-	if err := testRoundTrip("StatusPending", statusPending, func(pd blueprint.PlutusData) (types.StatusPending, error) {
+	if err := testRoundTrip("StatusPending", statusPending, func(pd types.PlutusData) (types.StatusPending, error) {
 		var v types.StatusPending
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -208,7 +207,7 @@ func main() {
 		Inner: types.SimpleString{Message: "696e6e6572"}, // "inner"
 		Count: big.NewInt(5),
 	}
-	if err := testRoundTrip("Nested", nested, func(pd blueprint.PlutusData) (types.Nested, error) {
+	if err := testRoundTrip("Nested", nested, func(pd types.PlutusData) (types.Nested, error) {
 		var v types.Nested
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -221,7 +220,7 @@ func main() {
 		Id:     "6d7969640a", // "myid"
 		Status: types.StatusActive{},
 	}
-	if err := testRoundTrip("WithEnum", withEnum, func(pd blueprint.PlutusData) (types.WithEnum, error) {
+	if err := testRoundTrip("WithEnum", withEnum, func(pd types.PlutusData) (types.WithEnum, error) {
 		var v types.WithEnum
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -236,7 +235,7 @@ func main() {
 			{Message: "74776f"},  // "two"
 		},
 	}
-	if err := testRoundTrip("WithRecordList", withRecordList, func(pd blueprint.PlutusData) (types.WithRecordList, error) {
+	if err := testRoundTrip("WithRecordList", withRecordList, func(pd types.PlutusData) (types.WithRecordList, error) {
 		var v types.WithRecordList
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -251,7 +250,7 @@ func main() {
 			IsSet: true,
 		},
 	}
-	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd blueprint.PlutusData) (types.WithOptionalNested, error) {
+	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd types.PlutusData) (types.WithOptionalNested, error) {
 		var v types.WithOptionalNested
 		return v, v.FromPlutusData(pd)
 	}); err != nil {
@@ -272,20 +271,14 @@ func main() {
 		t.Fatalf("failed to write main file: %v", err)
 	}
 
-	// Get absolute path to project root
-	projectRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatalf("failed to get project root: %v", err)
-	}
-
 	// Initialize go module
 	goModContent := `module testpkg
 
 go 1.21
 
-require github.com/pgrange/aiken_to_go v0.0.0
+require github.com/fxamacker/cbor/v2 v2.8.0
 
-replace github.com/pgrange/aiken_to_go => ` + projectRoot + `
+require github.com/x448/float16 v0.8.4 // indirect
 `
 	goModFile := filepath.Join(tmpDir, "go.mod")
 	if err := os.WriteFile(goModFile, []byte(goModContent), 0644); err != nil {

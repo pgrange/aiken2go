@@ -59,15 +59,256 @@ func (g *Generator) writeImports() {
 	g.writeLine("")
 	g.writeLine("import (")
 	g.indentInc()
+	g.writeLine(`"bytes"`)
 	g.writeLine(`"errors"`)
 	g.writeLine(`"fmt"`)
 	g.writeLine(`"math/big"`)
 	g.writeLine("")
-	g.writeLine(`"github.com/pgrange/aiken_to_go/pkg/blueprint"`)
+	g.writeLine(`"github.com/fxamacker/cbor/v2"`)
 	g.indentDec()
 	g.writeLine(")")
 	g.writeLine("")
+	g.writePlutusDataTypes()
 	g.writeHelpers()
+}
+
+func (g *Generator) writePlutusDataTypes() {
+	// PlutusData types - embedded directly in generated code
+	g.writeLine("// PlutusData represents a Plutus Data value that can be serialized to CBOR.")
+	g.writeLine("type PlutusData struct {")
+	g.indentInc()
+	g.writeLine("Constr     *ConstrPlutusData")
+	g.writeLine("Integer    *big.Int")
+	g.writeLine("ByteString []byte")
+	g.writeLine("List       []PlutusData")
+	g.writeLine("Map        []PlutusDataMapEntry")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	g.writeLine("// ConstrPlutusData represents a constructor with an index and fields.")
+	g.writeLine("type ConstrPlutusData struct {")
+	g.indentInc()
+	g.writeLine("Index  uint64")
+	g.writeLine("Fields []PlutusData")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	g.writeLine("// PlutusDataMapEntry represents a key-value pair in a Plutus Data map.")
+	g.writeLine("type PlutusDataMapEntry struct {")
+	g.indentInc()
+	g.writeLine("Key   PlutusData")
+	g.writeLine("Value PlutusData")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// Constants
+	g.writeLine("const (")
+	g.indentInc()
+	g.writeLine("cborTagConstr0    = 121")
+	g.writeLine("cborTagConstr6    = 127")
+	g.writeLine("cborTagConstrBase = 1280")
+	g.indentDec()
+	g.writeLine(")")
+	g.writeLine("")
+
+	// Constructor functions
+	g.writeLine("// NewConstrPlutusData creates a new constructor PlutusData.")
+	g.writeLine("func NewConstrPlutusData(index uint64, fields ...PlutusData) PlutusData {")
+	g.indentInc()
+	g.writeLine("return PlutusData{Constr: &ConstrPlutusData{Index: index, Fields: fields}}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	g.writeLine("// NewIntPlutusData creates a new integer PlutusData.")
+	g.writeLine("func NewIntPlutusData(i *big.Int) PlutusData {")
+	g.indentInc()
+	g.writeLine("return PlutusData{Integer: i}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	g.writeLine("// NewBytesPlutusData creates a new bytestring PlutusData.")
+	g.writeLine("func NewBytesPlutusData(b []byte) PlutusData {")
+	g.indentInc()
+	g.writeLine("return PlutusData{ByteString: b}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	g.writeLine("// NewListPlutusData creates a new list PlutusData.")
+	g.writeLine("func NewListPlutusData(items ...PlutusData) PlutusData {")
+	g.indentInc()
+	g.writeLine("return PlutusData{List: items}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// MarshalCBOR
+	g.writeLine("// MarshalCBOR serializes PlutusData to CBOR bytes.")
+	g.writeLine("func (p PlutusData) MarshalCBOR() ([]byte, error) {")
+	g.indentInc()
+	g.writeLine("em, err := cbor.EncOptions{BigIntConvert: cbor.BigIntConvertNone}.EncMode()")
+	g.writeLine("if err != nil { return nil, err }")
+	g.writeLine("val, err := p.toCBORValue()")
+	g.writeLine("if err != nil { return nil, err }")
+	g.writeLine("return em.Marshal(val)")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// UnmarshalCBOR
+	g.writeLine("// UnmarshalCBOR deserializes PlutusData from CBOR bytes.")
+	g.writeLine("func (p *PlutusData) UnmarshalCBOR(data []byte) error {")
+	g.indentInc()
+	g.writeLine("dm, err := cbor.DecOptions{BigIntDec: cbor.BigIntDecodePointer}.DecMode()")
+	g.writeLine("if err != nil { return err }")
+	g.writeLine("var raw interface{}")
+	g.writeLine("if err := dm.Unmarshal(data, &raw); err != nil { return err }")
+	g.writeLine("result, err := plutusDataFromCBORValue(raw)")
+	g.writeLine("if err != nil { return err }")
+	g.writeLine("*p = result")
+	g.writeLine("return nil")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// toCBORValue
+	g.writeLine("func (p PlutusData) toCBORValue() (interface{}, error) {")
+	g.indentInc()
+	g.writeLine("switch {")
+	g.writeLine("case p.Constr != nil:")
+	g.indentInc()
+	g.writeLine("fields := make([]interface{}, len(p.Constr.Fields))")
+	g.writeLine("for i, f := range p.Constr.Fields {")
+	g.indentInc()
+	g.writeLine("v, err := f.toCBORValue()")
+	g.writeLine("if err != nil { return nil, err }")
+	g.writeLine("fields[i] = v")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("var tag uint64")
+	g.writeLine("if p.Constr.Index <= 6 { tag = cborTagConstr0 + p.Constr.Index } else { tag = cborTagConstrBase + p.Constr.Index - 7 }")
+	g.writeLine("return cbor.Tag{Number: tag, Content: fields}, nil")
+	g.indentDec()
+	g.writeLine("case p.Integer != nil:")
+	g.indentInc()
+	g.writeLine("return p.Integer, nil")
+	g.indentDec()
+	g.writeLine("case p.ByteString != nil:")
+	g.indentInc()
+	g.writeLine("return p.ByteString, nil")
+	g.indentDec()
+	g.writeLine("case p.List != nil:")
+	g.indentInc()
+	g.writeLine("items := make([]interface{}, len(p.List))")
+	g.writeLine("for i, item := range p.List { v, err := item.toCBORValue(); if err != nil { return nil, err }; items[i] = v }")
+	g.writeLine("return items, nil")
+	g.indentDec()
+	g.writeLine("case p.Map != nil:")
+	g.indentInc()
+	g.writeLine("result := make(map[interface{}]interface{})")
+	g.writeLine("for _, entry := range p.Map {")
+	g.indentInc()
+	g.writeLine("k, err := entry.Key.toCBORValue(); if err != nil { return nil, err }")
+	g.writeLine("v, err := entry.Value.toCBORValue(); if err != nil { return nil, err }")
+	g.writeLine("result[k] = v")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("return result, nil")
+	g.indentDec()
+	g.writeLine("default:")
+	g.indentInc()
+	g.writeLine("return cbor.Tag{Number: cborTagConstr0, Content: []interface{}{}}, nil")
+	g.indentDec()
+	g.writeLine("}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// fromCBORValue
+	g.writeLine("func plutusDataFromCBORValue(v interface{}) (PlutusData, error) {")
+	g.indentInc()
+	g.writeLine("switch val := v.(type) {")
+	g.writeLine("case cbor.Tag:")
+	g.indentInc()
+	g.writeLine("var index uint64")
+	g.writeLine("switch {")
+	g.writeLine("case val.Number >= cborTagConstr0 && val.Number <= cborTagConstr6: index = val.Number - cborTagConstr0")
+	g.writeLine("case val.Number >= cborTagConstrBase: index = val.Number - cborTagConstrBase + 7")
+	g.writeLine(`default: return PlutusData{}, fmt.Errorf("unsupported CBOR tag: %d", val.Number)`)
+	g.writeLine("}")
+	g.writeLine("content, ok := val.Content.([]interface{}); if !ok { return PlutusData{}, errors.New(\"constructor content is not an array\") }")
+	g.writeLine("fields := make([]PlutusData, len(content))")
+	g.writeLine("for i, item := range content { pd, err := plutusDataFromCBORValue(item); if err != nil { return PlutusData{}, err }; fields[i] = pd }")
+	g.writeLine("return PlutusData{Constr: &ConstrPlutusData{Index: index, Fields: fields}}, nil")
+	g.indentDec()
+	g.writeLine("case *big.Int:")
+	g.indentInc()
+	g.writeLine("return PlutusData{Integer: val}, nil")
+	g.indentDec()
+	g.writeLine("case int64:")
+	g.indentInc()
+	g.writeLine("return PlutusData{Integer: big.NewInt(val)}, nil")
+	g.indentDec()
+	g.writeLine("case uint64:")
+	g.indentInc()
+	g.writeLine("return PlutusData{Integer: new(big.Int).SetUint64(val)}, nil")
+	g.indentDec()
+	g.writeLine("case []byte:")
+	g.indentInc()
+	g.writeLine("return PlutusData{ByteString: val}, nil")
+	g.indentDec()
+	g.writeLine("case []interface{}:")
+	g.indentInc()
+	g.writeLine("items := make([]PlutusData, len(val))")
+	g.writeLine("for i, item := range val { pd, err := plutusDataFromCBORValue(item); if err != nil { return PlutusData{}, err }; items[i] = pd }")
+	g.writeLine("return PlutusData{List: items}, nil")
+	g.indentDec()
+	g.writeLine("case map[interface{}]interface{}:")
+	g.indentInc()
+	g.writeLine("entries := make([]PlutusDataMapEntry, 0, len(val))")
+	g.writeLine("for k, v := range val {")
+	g.indentInc()
+	g.writeLine("key, err := plutusDataFromCBORValue(k); if err != nil { return PlutusData{}, err }")
+	g.writeLine("value, err := plutusDataFromCBORValue(v); if err != nil { return PlutusData{}, err }")
+	g.writeLine("entries = append(entries, PlutusDataMapEntry{Key: key, Value: value})")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("return PlutusData{Map: entries}, nil")
+	g.indentDec()
+	g.writeLine("default:")
+	g.indentInc()
+	g.writeLine(`return PlutusData{}, fmt.Errorf("unsupported CBOR type: %T", v)`)
+	g.indentDec()
+	g.writeLine("}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// ToHex
+	g.writeLine("// ToHex returns the CBOR encoding as a hex string.")
+	g.writeLine("func (p PlutusData) ToHex() (string, error) {")
+	g.indentInc()
+	g.writeLine("data, err := p.MarshalCBOR(); if err != nil { return \"\", err }")
+	g.writeLine("return fmt.Sprintf(\"%x\", data), nil")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
+	// Equals
+	g.writeLine("// Equals compares two PlutusData values for equality.")
+	g.writeLine("func (p PlutusData) Equals(other PlutusData) bool {")
+	g.indentInc()
+	g.writeLine("a, err := p.MarshalCBOR(); if err != nil { return false }")
+	g.writeLine("b, err := other.MarshalCBOR(); if err != nil { return false }")
+	g.writeLine("return bytes.Equal(a, b)")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
 }
 
 func (g *Generator) writeHelpers() {
@@ -121,7 +362,7 @@ func (g *Generator) writeHelpers() {
 	// Suppress unused variable warnings
 	g.writeLine("var _ = errors.New")
 	g.writeLine("var _ = big.NewInt")
-	g.writeLine("var _ = blueprint.PlutusData{}")
+	g.writeLine("var _ = PlutusData{}")
 }
 
 func (g *Generator) writeTypeDefinitions() error {
@@ -197,15 +438,15 @@ func (g *Generator) writeUnitType(name string) {
 	g.writeLine("")
 
 	// ToPlutusData
-	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", name))
+	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", name))
 	g.indentInc()
-	g.writeLine("return blueprint.NewConstrPlutusData(0), nil")
+	g.writeLine("return NewConstrPlutusData(0), nil")
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
 
 	// FromPlutusData
-	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", name))
+	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", name))
 	g.indentInc()
 	g.writeLine("if pd.Constr == nil || pd.Constr.Index != 0 || len(pd.Constr.Fields) != 0 {")
 	g.indentInc()
@@ -225,20 +466,20 @@ func (g *Generator) writeBoolType(name string, _ *Schema) error {
 	g.writeLine("")
 
 	// ToPlutusData
-	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", name))
+	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", name))
 	g.indentInc()
 	g.writeLine("if v {")
 	g.indentInc()
-	g.writeLine("return blueprint.NewConstrPlutusData(1), nil")
+	g.writeLine("return NewConstrPlutusData(1), nil")
 	g.indentDec()
 	g.writeLine("}")
-	g.writeLine("return blueprint.NewConstrPlutusData(0), nil")
+	g.writeLine("return NewConstrPlutusData(0), nil")
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
 
 	// FromPlutusData method
-	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", name))
+	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", name))
 	g.indentInc()
 	g.writeLine("if pd.Constr == nil {")
 	g.indentInc()
@@ -253,7 +494,7 @@ func (g *Generator) writeBoolType(name string, _ *Schema) error {
 
 	// FromPlutusData function
 	g.writeLine(fmt.Sprintf("// %sFromPlutusData decodes a %s from PlutusData.", name, name))
-	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd blueprint.PlutusData) (%s, error) {", name, name))
+	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd PlutusData) (%s, error) {", name, name))
 	g.indentInc()
 	g.writeLine("if pd.Constr == nil {")
 	g.indentInc()
@@ -286,11 +527,11 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	g.writeLine("")
 
 	// ToPlutusData
-	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", name))
+	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", name))
 	g.indentInc()
 	g.writeLine("if !v.IsSet {")
 	g.indentInc()
-	g.writeLine("return blueprint.NewConstrPlutusData(1), nil // None")
+	g.writeLine("return NewConstrPlutusData(1), nil // None")
 	g.indentDec()
 	g.writeLine("}")
 	// Generate inner serialization based on type
@@ -300,7 +541,7 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	g.writeLine("")
 
 	// FromPlutusData method
-	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", name))
+	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", name))
 	g.indentInc()
 	g.writeLine("if pd.Constr == nil {")
 	g.indentInc()
@@ -328,7 +569,7 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 
 	// FromPlutusData function
 	g.writeLine(fmt.Sprintf("// %sFromPlutusData decodes a %s from PlutusData.", name, name))
-	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd blueprint.PlutusData) (%s, error) {", name, name))
+	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd PlutusData) (%s, error) {", name, name))
 	g.indentInc()
 	g.writeLine(fmt.Sprintf("var v %s", name))
 	g.writeLine("if err := v.FromPlutusData(pd); err != nil {")
@@ -355,10 +596,10 @@ func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schem
 		refName := innerSchema.RefName()
 		switch refName {
 		case "Int":
-			g.writeLine("return blueprint.NewConstrPlutusData(0, blueprint.NewIntPlutusData(v.Value)), nil")
+			g.writeLine("return NewConstrPlutusData(0, NewIntPlutusData(v.Value)), nil")
 			return
 		case "ByteArray":
-			g.writeLine("return blueprint.NewConstrPlutusData(0, blueprint.NewBytesPlutusData(hexToBytes(v.Value))), nil")
+			g.writeLine("return NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(v.Value))), nil")
 			return
 		}
 	}
@@ -366,17 +607,17 @@ func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schem
 	// Default: assume the inner type has ToPlutusData
 	switch innerType {
 	case "*big.Int":
-		g.writeLine("return blueprint.NewConstrPlutusData(0, blueprint.NewIntPlutusData(v.Value)), nil")
+		g.writeLine("return NewConstrPlutusData(0, NewIntPlutusData(v.Value)), nil")
 	case "string":
-		g.writeLine("return blueprint.NewConstrPlutusData(0, blueprint.NewBytesPlutusData(hexToBytes(v.Value))), nil")
+		g.writeLine("return NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(v.Value))), nil")
 	default:
 		g.writeLine("inner, err := v.Value.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return blueprint.PlutusData{}, err")
+		g.writeLine("return PlutusData{}, err")
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine("return blueprint.NewConstrPlutusData(0, inner), nil")
+		g.writeLine("return NewConstrPlutusData(0, inner), nil")
 	}
 }
 
@@ -464,18 +705,18 @@ func (g *Generator) writeStructType(name string, schema *Schema, constrIndex int
 }
 
 func (g *Generator) writeStructToPlutusData(name string, schema *Schema, constrIndex int) {
-	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", name))
+	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", name))
 	g.indentInc()
 
 	if len(schema.Fields) == 0 {
-		g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d), nil", constrIndex))
 	} else {
-		g.writeLine(fmt.Sprintf("fields := make([]blueprint.PlutusData, %d)", len(schema.Fields)))
+		g.writeLine(fmt.Sprintf("fields := make([]PlutusData, %d)", len(schema.Fields)))
 		for i, field := range schema.Fields {
 			fieldName := g.normalizeFieldName(field.Title, i)
 			g.writeFieldToPlutusData(fieldName, &field, i)
 		}
-		g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, fields...), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, fields...), nil", constrIndex))
 	}
 
 	g.indentDec()
@@ -489,37 +730,37 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 		refName := schema.RefName()
 		switch refName {
 		case "Int":
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewIntPlutusData(v.%s)", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
 		default:
 			if strings.HasPrefix(refName, "cardano/") || strings.HasPrefix(refName, "aiken/") {
 				// Standard types - treat as bytes
-				g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+				g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
 			} else if strings.HasPrefix(refName, "List$") {
 				// List type - handle inline
 				g.writeListFieldToPlutusData(fieldName, refName, index)
 			} else if strings.HasPrefix(refName, "Pairs$") {
 				// Map type - skip for now (complex)
 				g.writeLine(fmt.Sprintf("// TODO: Map serialization for %s", fieldName))
-				g.writeLine(fmt.Sprintf("fields[%d] = blueprint.PlutusData{}", index))
+				g.writeLine(fmt.Sprintf("fields[%d] = PlutusData{}", index))
 			} else {
 				// Custom type with ToPlutusData
 				g.writeLine(fmt.Sprintf("field%d, err := v.%s.ToPlutusData()", index, fieldName))
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return blueprint.PlutusData{}, err")
+				g.writeLine("return PlutusData{}, err")
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("fields[%d] = field%d", index, index))
 			}
 		}
 	case schema.IsInteger():
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewIntPlutusData(v.%s)", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 	case schema.IsBytes():
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
 	case schema.IsList():
-		g.writeLine(fmt.Sprintf("list%d := make([]blueprint.PlutusData, len(v.%s))", index, fieldName))
+		g.writeLine(fmt.Sprintf("list%d := make([]PlutusData, len(v.%s))", index, fieldName))
 		g.writeLine(fmt.Sprintf("for i, item := range v.%s {", fieldName))
 		g.indentInc()
 		if len(schema.Items) > 0 && schema.Items.Single() != nil {
@@ -529,26 +770,26 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 			g.writeLine("itemPd, err := item.ToPlutusData()")
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return blueprint.PlutusData{}, err")
+			g.writeLine("return PlutusData{}, err")
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("list%d[i] = itemPd", index))
 		}
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewListPlutusData(list%d...)", index, index))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewListPlutusData(list%d...)", index, index))
 	case schema.IsMap():
 		// Map type - skip for now
 		g.writeLine(fmt.Sprintf("// TODO: Map serialization for %s", fieldName))
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.PlutusData{}", index))
+		g.writeLine(fmt.Sprintf("fields[%d] = PlutusData{}", index))
 	case schema.IsBoolean():
 		g.writeLine(fmt.Sprintf("if v.%s {", fieldName))
 		g.indentInc()
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(1)", index))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(1)", index))
 		g.indentDec()
 		g.writeLine("} else {")
 		g.indentInc()
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0)", index))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0)", index))
 		g.indentDec()
 		g.writeLine("}")
 	case schema.IsOption():
@@ -562,15 +803,15 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 			g.writeLine(fmt.Sprintf("innerPd, err := v.%s.ToPlutusData()", fieldName))
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return blueprint.PlutusData{}, err")
+			g.writeLine("return PlutusData{}, err")
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, innerPd)", index))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, innerPd)", index))
 		}
 		g.indentDec()
 		g.writeLine("} else {")
 		g.indentInc()
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(1)", index)) // None
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(1)", index)) // None
 		g.indentDec()
 		g.writeLine("}")
 	default:
@@ -578,7 +819,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 		g.writeLine(fmt.Sprintf("field%d, err := v.%s.ToPlutusData()", index, fieldName))
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return blueprint.PlutusData{}, err")
+		g.writeLine("return PlutusData{}, err")
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("fields[%d] = field%d", index, index))
@@ -590,23 +831,23 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 	inner := strings.TrimPrefix(refName, "List$")
 	inner = strings.ReplaceAll(inner, "~1", "/")
 
-	g.writeLine(fmt.Sprintf("list%d := make([]blueprint.PlutusData, len(v.%s))", index, fieldName))
+	g.writeLine(fmt.Sprintf("list%d := make([]PlutusData, len(v.%s))", index, fieldName))
 	g.writeLine(fmt.Sprintf("for i, item := range v.%s {", fieldName))
 	g.indentInc()
 
 	switch inner {
 	case "Int":
-		g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewIntPlutusData(item)", index))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", index))
 	case "ByteArray":
-		g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewBytesPlutusData(hexToBytes(item))", index))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", index))
 	default:
 		if strings.HasPrefix(inner, "cardano/") || strings.HasPrefix(inner, "aiken/") {
-			g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewBytesPlutusData(hexToBytes(item))", index))
+			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", index))
 		} else {
 			g.writeLine("itemPd, err := item.ToPlutusData()")
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return blueprint.PlutusData{}, err")
+			g.writeLine("return PlutusData{}, err")
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("list%d[i] = itemPd", index))
@@ -615,7 +856,7 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 
 	g.indentDec()
 	g.writeLine("}")
-	g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewListPlutusData(list%d...)", index, index))
+	g.writeLine(fmt.Sprintf("fields[%d] = NewListPlutusData(list%d...)", index, index))
 }
 
 func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int) {
@@ -624,12 +865,12 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 		refName := itemSchema.RefName()
 		switch refName {
 		case "Int":
-			g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewIntPlutusData(item)", listIndex))
+			g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", listIndex))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewBytesPlutusData(hexToBytes(item))", listIndex))
+			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
 		default:
 			if strings.HasPrefix(refName, "cardano/") || strings.HasPrefix(refName, "aiken/") {
-				g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewBytesPlutusData(hexToBytes(item))", listIndex))
+				g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
 			} else {
 				// Check if it's an interface type (enum)
 				if schema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && schema.IsEnum() {
@@ -639,21 +880,21 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 				}
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return blueprint.PlutusData{}, err")
+				g.writeLine("return PlutusData{}, err")
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("list%d[i] = itemPd", listIndex))
 			}
 		}
 	case itemSchema.IsInteger():
-		g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewIntPlutusData(item)", listIndex))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", listIndex))
 	case itemSchema.IsBytes():
-		g.writeLine(fmt.Sprintf("list%d[i] = blueprint.NewBytesPlutusData(hexToBytes(item))", listIndex))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
 	default:
 		g.writeLine("itemPd, err := item.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return blueprint.PlutusData{}, err")
+		g.writeLine("return PlutusData{}, err")
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("list%d[i] = itemPd", listIndex))
@@ -666,21 +907,21 @@ func (g *Generator) writeOptionSomeValue(fieldName string, inner *Schema, index 
 		refName := inner.RefName()
 		switch refName {
 		case "Int":
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, blueprint.NewIntPlutusData(v.%s))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, blueprint.NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
 		default:
-			g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, blueprint.NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
 		}
 	case inner.IsInteger():
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, blueprint.NewIntPlutusData(v.%s))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 	case inner.IsBytes():
-		g.writeLine(fmt.Sprintf("fields[%d] = blueprint.NewConstrPlutusData(0, blueprint.NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
 	}
 }
 
 func (g *Generator) writeStructFromPlutusData(name string, schema *Schema, constrIndex int) {
-	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", name))
+	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", name))
 	g.indentInc()
 
 	g.writeLine("if pd.Constr == nil {")
@@ -934,7 +1175,7 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 	g.writeLine(fmt.Sprintf("type %s interface {", name))
 	g.indentInc()
 	g.writeLine(fmt.Sprintf("%s()", methodName))
-	g.writeLine("ToPlutusData() (blueprint.PlutusData, error)")
+	g.writeLine("ToPlutusData() (PlutusData, error)")
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
@@ -959,15 +1200,15 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 			g.writeLine("")
 
 			// ToPlutusData
-			g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", variantName))
+			g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", variantName))
 			g.indentInc()
-			g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d), nil", constrIndex))
+			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d), nil", constrIndex))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("")
 
 			// FromPlutusData
-			g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", variantName))
+			g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", variantName))
 			g.indentInc()
 			g.writeLine(fmt.Sprintf("if pd.Constr == nil || pd.Constr.Index != %d {", constrIndex))
 			g.indentInc()
@@ -1011,7 +1252,7 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 
 func (g *Generator) writeEnumFromPlutusData(name string, schema *Schema) {
 	g.writeLine(fmt.Sprintf("// %sFromPlutusData decodes a %s from PlutusData.", name, name))
-	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd blueprint.PlutusData) (%s, error) {", name, name))
+	g.writeLine(fmt.Sprintf("func %sFromPlutusData(pd PlutusData) (%s, error) {", name, name))
 	g.indentInc()
 	g.writeLine("if pd.Constr == nil {")
 	g.indentInc()
@@ -1050,7 +1291,7 @@ func (g *Generator) writeEnumFromPlutusData(name string, schema *Schema) {
 }
 
 func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrIndex int) {
-	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (blueprint.PlutusData, error) {", name))
+	g.writeLine(fmt.Sprintf("func (v %s) ToPlutusData() (PlutusData, error) {", name))
 	g.indentInc()
 
 	switch {
@@ -1058,34 +1299,34 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 		refName := field.RefName()
 		switch refName {
 		case "Int":
-			g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, blueprint.NewIntPlutusData(v.Value)), nil", constrIndex))
+			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewIntPlutusData(v.Value)), nil", constrIndex))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, blueprint.NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
 		default:
 			if strings.HasPrefix(refName, "cardano/") || strings.HasPrefix(refName, "aiken/") {
-				g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, blueprint.NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
 			} else {
 				g.writeLine("inner, err := v.Value.ToPlutusData()")
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return blueprint.PlutusData{}, err")
+				g.writeLine("return PlutusData{}, err")
 				g.indentDec()
 				g.writeLine("}")
-				g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, inner), nil", constrIndex))
+				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
 			}
 		}
 	case field.IsInteger():
-		g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, blueprint.NewIntPlutusData(v.Value)), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewIntPlutusData(v.Value)), nil", constrIndex))
 	case field.IsBytes():
-		g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, blueprint.NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
 	default:
 		g.writeLine("inner, err := v.Value.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return blueprint.PlutusData{}, err")
+		g.writeLine("return PlutusData{}, err")
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("return blueprint.NewConstrPlutusData(%d, inner), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
 	}
 
 	g.indentDec()
@@ -1094,7 +1335,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 }
 
 func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, constrIndex int) {
-	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd blueprint.PlutusData) error {", name))
+	g.writeLine(fmt.Sprintf("func (v *%s) FromPlutusData(pd PlutusData) error {", name))
 	g.indentInc()
 
 	g.writeLine(fmt.Sprintf("if pd.Constr == nil || pd.Constr.Index != %d || len(pd.Constr.Fields) != 1 {", constrIndex))

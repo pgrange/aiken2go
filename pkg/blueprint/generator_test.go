@@ -227,7 +227,8 @@ func TestGenerateSimple(t *testing.T) {
 		"package contracts",
 		"import (",
 		`"math/big"`,
-		`"github.com/pgrange/aiken_to_go/pkg/blueprint"`,
+		`"github.com/fxamacker/cbor/v2"`,
+		"type PlutusData struct",
 		"func hexToBytes(",
 		"func bytesToHex(",
 	}
@@ -256,7 +257,7 @@ func TestGenerateComplex(t *testing.T) {
 		"package treasury",
 		"type MultisigScript interface",
 		"isMultisigScript()",
-		"ToPlutusData() (blueprint.PlutusData, error)",
+		"ToPlutusData() (PlutusData, error)",
 		"type MultisigScriptSignature struct",
 		"type MultisigScriptAllOf struct",
 		"type MultisigScriptAnyOf struct",
@@ -267,7 +268,7 @@ func TestGenerateComplex(t *testing.T) {
 		"func (MultisigScriptSignature) isMultisigScript()",
 		"func (v MultisigScriptSignature) ToPlutusData()",
 		"func (v *MultisigScriptSignature) FromPlutusData(",
-		"MultisigScriptFromPlutusData(pd blueprint.PlutusData)",
+		"MultisigScriptFromPlutusData(pd PlutusData)",
 		"type PayoutStatus interface",
 		"type PayoutStatusActive struct",
 		"type PayoutStatusPaused struct",
@@ -340,18 +341,14 @@ func TestGeneratedCodeCompiles(t *testing.T) {
 		t.Fatalf("failed to write generated code: %v", err)
 	}
 
-	// Get module path for replace directive
-	cwd, _ := os.Getwd()
-	modulePath := filepath.Join(cwd, "../..")
-
-	// Create go.mod with replace directive
+	// Create go.mod with cbor dependency
 	goMod := `module testmod
 
 go 1.21
 
-require github.com/pgrange/aiken_to_go v0.0.0
+require github.com/fxamacker/cbor/v2 v2.8.0
 
-replace github.com/pgrange/aiken_to_go => ` + modulePath + `
+require github.com/x448/float16 v0.8.4 // indirect
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
 		t.Fatalf("failed to write go.mod: %v", err)
