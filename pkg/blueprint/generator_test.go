@@ -229,8 +229,6 @@ func TestGenerateSimple(t *testing.T) {
 		`"math/big"`,
 		`"github.com/fxamacker/cbor/v2"`,
 		"type PlutusData struct",
-		"func hexToBytes(",
-		"func bytesToHex(",
 	}
 
 	for _, check := range checks {
@@ -300,8 +298,6 @@ func TestGenerateTuple(t *testing.T) {
 	// Verify the generated code contains expected elements
 	checks := []string{
 		"package tuples",
-		"func hexToBytes(",
-		"func bytesToHex(",
 	}
 
 	for _, check := range checks {

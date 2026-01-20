@@ -74,7 +74,7 @@ import "myproject/contracts" // generated code
 
 // Create a datum
 datum := contracts.TypesMyDatum{
-    Owner:  "deadbeef...", // ByteArray fields are hex strings
+    Owner:  []byte{0xde, 0xad, 0xbe, 0xef}, // ByteArray fields are []byte
     Amount: big.NewInt(1000000),
 }
 
@@ -127,11 +127,11 @@ func ActionFromPlutusData(pd PlutusData) (Action, error)
 
 // Variant structs
 type ActionSend struct {
-    To     string   // ByteArray as hex
+    To     []byte
     Amount *big.Int
 }
 type ActionReceive struct {
-    From string
+    From []byte
 }
 type ActionCancel struct{}
 ```
@@ -143,7 +143,7 @@ When encoding, you know which variant you're creating:
 ```go
 // Create a Send action
 action := contracts.ActionSend{
-    To:     "deadbeef1234",
+    To:     []byte{0xde, 0xad, 0xbe, 0xef, 0x12, 0x34},
     Amount: big.NewInt(1000000),
 }
 
@@ -176,9 +176,9 @@ if err != nil {
 // 3. Use type switch to handle each variant
 switch a := action.(type) {
 case contracts.ActionSend:
-    fmt.Printf("Send %s to %s\n", a.Amount.String(), a.To)
+    fmt.Printf("Send %s to %x\n", a.Amount.String(), a.To)
 case contracts.ActionReceive:
-    fmt.Printf("Receive from %s\n", a.From)
+    fmt.Printf("Receive from %x\n", a.From)
 case contracts.ActionCancel:
     fmt.Println("Cancel")
 default:
@@ -219,11 +219,12 @@ The index corresponds to the order of declaration in the Aiken source.
 | Aiken Type | Go Type |
 |------------|---------|
 | `Int` | `*big.Int` |
-| `ByteArray` | `string` (hex-encoded) |
+| `ByteArray` | `[]byte` |
 | `Bool` | `bool` |
 | `List<T>` | `[]T` |
 | `Option<T>` | `*T` (pointer, nil = None) |
 | `Option<Int>` | `*big.Int` (nil = None) |
+| `Option<ByteArray>` | `*[]byte` (nil = None) |
 | `Option<EnumType>` | `EnumType` (interface, nil = None) |
 | `Data` | `interface{}` (raw PlutusData) |
 | Tuple types | Struct with `Field0`, `Field1`, etc. |
@@ -235,10 +236,10 @@ Option types use Go pointers for idiomatic nullable values:
 
 ```go
 // Aiken: Option<ByteArray>
-// Go: *string
+// Go: *[]byte
 
 // Some value
-owner := "deadbeef1234"
+owner := []byte{0xde, 0xad, 0xbe, 0xef}
 datum.Owner = &owner
 
 // None
@@ -255,8 +256,8 @@ datum.Amount = nil                   // None
 
 // Aiken: Option<Credential> (where Credential is an enum)
 // Go: Credential (interface, nil = None)
-datum.Stake = CredentialVerificationKey{Value: "..."}  // Some
-datum.Stake = nil                                       // None
+datum.Stake = CredentialVerificationKey{Value: []byte{0x12, 0x34}}  // Some
+datum.Stake = nil                                                    // None
 ```
 
 ## PlutusData Format

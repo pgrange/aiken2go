@@ -318,53 +318,6 @@ func (g *Generator) writePlutusDataTypes() {
 }
 
 func (g *Generator) writeHelpers() {
-	// hexToBytes helper
-	g.writeLine("func hexToBytes(s string) []byte {")
-	g.indentInc()
-	g.writeLine("if len(s)%2 != 0 {")
-	g.indentInc()
-	g.writeLine("return nil")
-	g.indentDec()
-	g.writeLine("}")
-	g.writeLine("result := make([]byte, len(s)/2)")
-	g.writeLine("for i := 0; i < len(s); i += 2 {")
-	g.indentInc()
-	g.writeLine("var b byte")
-	g.writeLine("for j := 0; j < 2; j++ {")
-	g.indentInc()
-	g.writeLine("c := s[i+j]")
-	g.writeLine("switch {")
-	g.writeLine("case c >= '0' && c <= '9':")
-	g.indentInc()
-	g.writeLine("b = b*16 + (c - '0')")
-	g.indentDec()
-	g.writeLine("case c >= 'a' && c <= 'f':")
-	g.indentInc()
-	g.writeLine("b = b*16 + (c - 'a' + 10)")
-	g.indentDec()
-	g.writeLine("case c >= 'A' && c <= 'F':")
-	g.indentInc()
-	g.writeLine("b = b*16 + (c - 'A' + 10)")
-	g.indentDec()
-	g.writeLine("}")
-	g.indentDec()
-	g.writeLine("}")
-	g.writeLine("result[i/2] = b")
-	g.indentDec()
-	g.writeLine("}")
-	g.writeLine("return result")
-	g.indentDec()
-	g.writeLine("}")
-	g.writeLine("")
-
-	// bytesToHex helper
-	g.writeLine("func bytesToHex(b []byte) string {")
-	g.indentInc()
-	g.writeLine("return fmt.Sprintf(\"%x\", b)")
-	g.indentDec()
-	g.writeLine("}")
-	g.writeLine("")
-
 	// plutusDataTypeString helper - describes the type of a PlutusData for error messages
 	g.writeLine("func plutusDataTypeString(pd PlutusData) string {")
 	g.indentInc()
@@ -624,7 +577,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 		case "Int":
 			g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 		case "Bool":
 			g.writeLine(fmt.Sprintf("if v.%s {", fieldName))
 			g.indentInc()
@@ -657,7 +610,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 				g.writeOptionRefToPlutusData(fieldName, refName, index)
 			} else if g.isPrimitiveWrapper(refName, "bytes") {
 				// Primitive wrapper for bytes
-				g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+				g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				// Primitive wrapper for integer
 				g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
@@ -675,7 +628,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 	case schema.IsInteger():
 		g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 	case schema.IsBytes():
-		g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 	case schema.IsList():
 		g.writeLine(fmt.Sprintf("list%d := make([]PlutusData, len(v.%s))", index, fieldName))
 		g.writeLine(fmt.Sprintf("for i, item := range v.%s {", fieldName))
@@ -756,7 +709,7 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 	case "Int":
 		g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", index))
 	case "ByteArray":
-		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", index))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(item)", index))
 	case "Bool":
 		g.writeLine("if item {")
 		g.indentInc()
@@ -769,7 +722,7 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 		g.writeLine("}")
 	default:
 		if g.isPrimitiveWrapper(inner, "bytes") {
-			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", index))
+			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(item)", index))
 		} else if g.isPrimitiveWrapper(inner, "integer") {
 			g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", index))
 		} else {
@@ -796,7 +749,7 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 		case "Int":
 			g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", listIndex))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
+			g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(item)", listIndex))
 		case "Bool":
 			g.writeLine("if item {")
 			g.indentInc()
@@ -809,7 +762,7 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 			g.writeLine("}")
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
-				g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
+				g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(item)", listIndex))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", listIndex))
 			} else {
@@ -825,7 +778,7 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 	case itemSchema.IsInteger():
 		g.writeLine(fmt.Sprintf("list%d[i] = NewIntPlutusData(item)", listIndex))
 	case itemSchema.IsBytes():
-		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(hexToBytes(item))", listIndex))
+		g.writeLine(fmt.Sprintf("list%d[i] = NewBytesPlutusData(item)", listIndex))
 	default:
 		g.writeLine("itemPd, err := item.ToPlutusData()")
 		g.writeLine("if err != nil {")
@@ -845,14 +798,14 @@ func (g *Generator) writeOptionSomeValue(fieldName string, inner *Schema, index 
 		case "Int":
 			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(*v.%s))", index, fieldName))
 		default:
-			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(*v.%s))", index, fieldName))
 		}
 	case inner.IsInteger():
 		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 	case inner.IsBytes():
-		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(*v.%s))", index, fieldName))
 	}
 }
 
@@ -868,10 +821,10 @@ func (g *Generator) writeOptionRefToPlutusData(fieldName string, refName string,
 	case "Int":
 		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 	case "ByteArray":
-		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+		g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(*v.%s))", index, fieldName))
 	default:
 		if g.isPrimitiveWrapper(innerRef, "bytes") {
-			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(hexToBytes(*v.%s)))", index, fieldName))
+			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewBytesPlutusData(*v.%s))", index, fieldName))
 		} else if g.isPrimitiveWrapper(innerRef, "integer") {
 			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s))", index, fieldName))
 		} else {
@@ -936,7 +889,7 @@ func (g *Generator) writeOptionRefFromPlutusData(fieldName string, refName strin
 		g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes in Option Some, got %%s", plutusDataTypeString(pd.Constr.Fields[%d].Constr.Fields[0]))`, fieldName, index))
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("optVal := bytesToHex(pd.Constr.Fields[%d].Constr.Fields[0].ByteString)", index))
+		g.writeLine(fmt.Sprintf("optVal := pd.Constr.Fields[%d].Constr.Fields[0].ByteString", index))
 		g.writeLine(fmt.Sprintf("v.%s = &optVal", fieldName))
 	default:
 		if g.isPrimitiveWrapper(innerRef, "bytes") {
@@ -945,7 +898,7 @@ func (g *Generator) writeOptionRefFromPlutusData(fieldName string, refName strin
 			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes in Option Some, got %%s", plutusDataTypeString(pd.Constr.Fields[%d].Constr.Fields[0]))`, fieldName, index))
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("optVal := bytesToHex(pd.Constr.Fields[%d].Constr.Fields[0].ByteString)", index))
+			g.writeLine(fmt.Sprintf("optVal := pd.Constr.Fields[%d].Constr.Fields[0].ByteString", index))
 			g.writeLine(fmt.Sprintf("v.%s = &optVal", fieldName))
 		} else if g.isPrimitiveWrapper(innerRef, "integer") {
 			g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Constr.Fields[0].Integer == nil {", index))
@@ -1040,7 +993,7 @@ func (g *Generator) writeFieldFromPlutusData(fieldName string, schema *Schema, i
 			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[%d]))`, fieldName, index))
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.Constr.Fields[%d].ByteString)", fieldName, index))
+			g.writeLine(fmt.Sprintf("v.%s = pd.Constr.Fields[%d].ByteString", fieldName, index))
 		case "Bool":
 			g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Constr == nil {", index))
 			g.indentInc()
@@ -1068,7 +1021,7 @@ func (g *Generator) writeFieldFromPlutusData(fieldName string, schema *Schema, i
 				g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[%d]))`, fieldName, index))
 				g.indentDec()
 				g.writeLine("}")
-				g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.Constr.Fields[%d].ByteString)", fieldName, index))
+				g.writeLine(fmt.Sprintf("v.%s = pd.Constr.Fields[%d].ByteString", fieldName, index))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				// Primitive wrapper for integer
 				g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Integer == nil {", index))
@@ -1110,7 +1063,7 @@ func (g *Generator) writeFieldFromPlutusData(fieldName string, schema *Schema, i
 		g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[%d]))`, fieldName, index))
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.Constr.Fields[%d].ByteString)", fieldName, index))
+		g.writeLine(fmt.Sprintf("v.%s = pd.Constr.Fields[%d].ByteString", fieldName, index))
 	case schema.IsList():
 		g.writeListFieldFromPlutusDataInline(fieldName, schema, index)
 	case schema.IsMap():
@@ -1162,7 +1115,7 @@ func (g *Generator) writeListFieldFromPlutusData(fieldName, refName string, inde
 		g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: list item expected bytes, got %%s", plutusDataTypeString(item))`, fieldName))
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("v.%s[i] = bytesToHex(item.ByteString)", fieldName))
+		g.writeLine(fmt.Sprintf("v.%s[i] = item.ByteString", fieldName))
 	case "Bool":
 		g.writeLine("if item.Constr == nil {")
 		g.indentInc()
@@ -1177,7 +1130,7 @@ func (g *Generator) writeListFieldFromPlutusData(fieldName, refName string, inde
 			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: list item expected bytes, got %%s", plutusDataTypeString(item))`, fieldName))
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("v.%s[i] = bytesToHex(item.ByteString)", fieldName))
+			g.writeLine(fmt.Sprintf("v.%s[i] = item.ByteString", fieldName))
 		} else if g.isPrimitiveWrapper(inner, "integer") {
 			g.writeLine("if item.Integer == nil {")
 			g.indentInc()
@@ -1229,12 +1182,12 @@ func (g *Generator) writeListFieldFromPlutusDataInline(fieldName string, schema 
 			case "Int":
 				g.writeLine(fmt.Sprintf("v.%s[i] = item.Integer", fieldName))
 			case "ByteArray":
-				g.writeLine(fmt.Sprintf("v.%s[i] = bytesToHex(item.ByteString)", fieldName))
+				g.writeLine(fmt.Sprintf("v.%s[i] = item.ByteString", fieldName))
 			case "Bool":
 				g.writeLine(fmt.Sprintf("v.%s[i] = item.Constr != nil && item.Constr.Index == 1", fieldName))
 			default:
 				if g.isPrimitiveWrapper(refName, "bytes") {
-					g.writeLine(fmt.Sprintf("v.%s[i] = bytesToHex(item.ByteString)", fieldName))
+					g.writeLine(fmt.Sprintf("v.%s[i] = item.ByteString", fieldName))
 				} else if g.isPrimitiveWrapper(refName, "integer") {
 					g.writeLine(fmt.Sprintf("v.%s[i] = item.Integer", fieldName))
 				} else if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
@@ -1257,7 +1210,7 @@ func (g *Generator) writeListFieldFromPlutusDataInline(fieldName string, schema 
 		case itemSchema.IsInteger():
 			g.writeLine(fmt.Sprintf("v.%s[i] = item.Integer", fieldName))
 		case itemSchema.IsBytes():
-			g.writeLine(fmt.Sprintf("v.%s[i] = bytesToHex(item.ByteString)", fieldName))
+			g.writeLine(fmt.Sprintf("v.%s[i] = item.ByteString", fieldName))
 		default:
 			g.writeLine(fmt.Sprintf("if err := v.%s[i].FromPlutusData(item); err != nil {", fieldName))
 			g.indentInc()
@@ -1515,10 +1468,10 @@ func (g *Generator) writeListAliasItemToPlutusData(innerSchema *Schema) {
 		case "Int":
 			g.writeLine("items[i] = NewIntPlutusData(item)")
 		case "ByteArray":
-			g.writeLine("items[i] = NewBytesPlutusData(hexToBytes(item))")
+			g.writeLine("items[i] = NewBytesPlutusData(item)")
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
-				g.writeLine("items[i] = NewBytesPlutusData(hexToBytes(item))")
+				g.writeLine("items[i] = NewBytesPlutusData(item)")
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine("items[i] = NewIntPlutusData(item)")
 			} else {
@@ -1534,7 +1487,7 @@ func (g *Generator) writeListAliasItemToPlutusData(innerSchema *Schema) {
 	case innerSchema.IsInteger():
 		g.writeLine("items[i] = NewIntPlutusData(item)")
 	case innerSchema.IsBytes():
-		g.writeLine("items[i] = NewBytesPlutusData(hexToBytes(item))")
+		g.writeLine("items[i] = NewBytesPlutusData(item)")
 	default:
 		g.writeLine("pd, err := item.ToPlutusData()")
 		g.writeLine("if err != nil {")
@@ -1564,7 +1517,7 @@ func (g *Generator) writeListAliasItemFromPlutusData(innerSchema *Schema, listNa
 			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: list item expected bytes, got %%s", plutusDataTypeString(item))`, listName))
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine("(*v)[i] = bytesToHex(item.ByteString)")
+			g.writeLine("(*v)[i] = item.ByteString")
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
 				g.writeLine("if item.ByteString == nil {")
@@ -1572,7 +1525,7 @@ func (g *Generator) writeListAliasItemFromPlutusData(innerSchema *Schema, listNa
 				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: list item expected bytes, got %%s", plutusDataTypeString(item))`, listName))
 				g.indentDec()
 				g.writeLine("}")
-				g.writeLine("(*v)[i] = bytesToHex(item.ByteString)")
+				g.writeLine("(*v)[i] = item.ByteString")
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine("if item.Integer == nil {")
 				g.indentInc()
@@ -1617,7 +1570,7 @@ func (g *Generator) writeListAliasItemFromPlutusData(innerSchema *Schema, listNa
 		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: list item expected bytes, got %%s", plutusDataTypeString(item))`, listName))
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine("(*v)[i] = bytesToHex(item.ByteString)")
+		g.writeLine("(*v)[i] = item.ByteString")
 	default:
 		g.writeLine("var val " + g.schemaToGoType(innerSchema))
 		g.writeLine("if err := val.FromPlutusData(item); err != nil {")
@@ -1637,10 +1590,10 @@ func (g *Generator) writeTupleFieldToPlutusData(fieldName string, item *Schema, 
 		case "Int":
 			g.writeLine(fmt.Sprintf("items[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+			g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
-				g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+				g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine(fmt.Sprintf("items[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 			} else {
@@ -1656,7 +1609,7 @@ func (g *Generator) writeTupleFieldToPlutusData(fieldName string, item *Schema, 
 	case item.IsInteger():
 		g.writeLine(fmt.Sprintf("items[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 	case item.IsBytes():
-		g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(hexToBytes(v.%s))", index, fieldName))
+		g.writeLine(fmt.Sprintf("items[%d] = NewBytesPlutusData(v.%s)", index, fieldName))
 	default:
 		g.writeLine(fmt.Sprintf("item%d, err := v.%s.ToPlutusData()", index, fieldName))
 		g.writeLine("if err != nil {")
@@ -1686,7 +1639,7 @@ func (g *Generator) writeTupleFieldFromPlutusData(fieldName string, item *Schema
 			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.List[%d]))`, fieldName, index))
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.List[%d].ByteString)", fieldName, index))
+			g.writeLine(fmt.Sprintf("v.%s = pd.List[%d].ByteString", fieldName, index))
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
 				g.writeLine(fmt.Sprintf("if pd.List[%d].ByteString == nil {", index))
@@ -1694,7 +1647,7 @@ func (g *Generator) writeTupleFieldFromPlutusData(fieldName string, item *Schema
 				g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.List[%d]))`, fieldName, index))
 				g.indentDec()
 				g.writeLine("}")
-				g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.List[%d].ByteString)", fieldName, index))
+				g.writeLine(fmt.Sprintf("v.%s = pd.List[%d].ByteString", fieldName, index))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine(fmt.Sprintf("if pd.List[%d].Integer == nil {", index))
 				g.indentInc()
@@ -1723,7 +1676,7 @@ func (g *Generator) writeTupleFieldFromPlutusData(fieldName string, item *Schema
 		g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected bytes, got %%s", plutusDataTypeString(pd.List[%d]))`, fieldName, index))
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine(fmt.Sprintf("v.%s = bytesToHex(pd.List[%d].ByteString)", fieldName, index))
+		g.writeLine(fmt.Sprintf("v.%s = pd.List[%d].ByteString", fieldName, index))
 	default:
 		g.writeLine(fmt.Sprintf("if err := v.%s.FromPlutusData(pd.List[%d]); err != nil {", fieldName, index))
 		g.indentInc()
@@ -1744,7 +1697,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 		case "Int":
 			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewIntPlutusData(v.Value)), nil", constrIndex))
 		case "ByteArray":
-			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(v.Value)), nil", constrIndex))
 		case "Data":
 			// Data type is raw PlutusData - pass through directly
 			g.writeLine(fmt.Sprintf("inner, ok := v.Value.(PlutusData)"))
@@ -1756,7 +1709,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
-				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(v.Value)), nil", constrIndex))
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewIntPlutusData(v.Value)), nil", constrIndex))
 			} else {
@@ -1772,7 +1725,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 	case field.IsInteger():
 		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewIntPlutusData(v.Value)), nil", constrIndex))
 	case field.IsBytes():
-		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(hexToBytes(v.Value))), nil", constrIndex))
+		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(v.Value)), nil", constrIndex))
 	default:
 		g.writeLine("inner, err := v.Value.ToPlutusData()")
 		g.writeLine("if err != nil {")
@@ -1825,7 +1778,7 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 			g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
 			g.indentDec()
 			g.writeLine("}")
-			g.writeLine("v.Value = bytesToHex(pd.Constr.Fields[0].ByteString)")
+			g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
 		case "Data":
 			// Data type is raw PlutusData - store directly
 			g.writeLine("v.Value = pd.Constr.Fields[0]")
@@ -1836,7 +1789,7 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 				g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
 				g.indentDec()
 				g.writeLine("}")
-				g.writeLine("v.Value = bytesToHex(pd.Constr.Fields[0].ByteString)")
+				g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 				g.indentInc()
@@ -1875,7 +1828,7 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 		g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
 		g.indentDec()
 		g.writeLine("}")
-		g.writeLine("v.Value = bytesToHex(pd.Constr.Fields[0].ByteString)")
+		g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
 	default:
 		g.writeLine("if err := v.Value.FromPlutusData(pd.Constr.Fields[0]); err != nil {")
 		g.indentInc()
@@ -1898,7 +1851,7 @@ func (g *Generator) schemaToGoType(schema *Schema) string {
 	case schema.IsInteger():
 		return "*big.Int"
 	case schema.IsBytes():
-		return "string" // hex encoded
+		return "[]byte"
 	case schema.IsList():
 		if len(schema.Items) > 0 {
 			if schema.Items.IsTuple() {
@@ -1911,7 +1864,11 @@ func (g *Generator) schemaToGoType(schema *Schema) string {
 	case schema.IsMap():
 		keyType := "string"
 		if schema.Keys != nil {
-			keyType = g.schemaToGoType(schema.Keys)
+			kt := g.schemaToGoType(schema.Keys)
+			// []byte can't be a map key in Go, keep as string
+			if kt != "[]byte" {
+				keyType = kt
+			}
 		}
 		valueType := "interface{}"
 		if schema.Values != nil {
@@ -1947,7 +1904,7 @@ func (g *Generator) refToGoType(refName string) string {
 	case "Int":
 		return "*big.Int"
 	case "ByteArray":
-		return "string"
+		return "[]byte"
 	case "Bool":
 		return "bool"
 	case "Data":
@@ -1986,7 +1943,7 @@ func (g *Generator) refToGoType(refName string) string {
 		unescaped := g.unescapeRef(refName)
 		if def, ok := g.bp.Definitions[unescaped]; ok {
 			if def.IsBytes() {
-				return "string"
+				return "[]byte"
 			}
 			if def.IsInteger() {
 				return "*big.Int"
@@ -2006,6 +1963,10 @@ func (g *Generator) pairsToGoType(refName string) string {
 		return "map[string]interface{}"
 	}
 	keyType := g.refToGoType(parts[0])
+	// []byte can't be a map key in Go, keep as string
+	if keyType == "[]byte" {
+		keyType = "string"
+	}
 	valueType := g.refToGoType(parts[1])
 	return fmt.Sprintf("map[%s]%s", keyType, valueType)
 }

@@ -27,14 +27,14 @@ func TestAdvancedTypes(t *testing.T) {
 		t.Fatalf("failed to generate code: %v", err)
 	}
 
-	// Test 1: Primitive wrapper types should be generated as string (for bytes) or *big.Int (for integer)
+	// Test 1: Primitive wrapper types should be generated as []byte (for bytes) or *big.Int (for integer)
 	t.Run("PrimitiveWrappers", func(t *testing.T) {
-		// Token struct should have PolicyId as string, not as a custom type
-		if !strings.Contains(code, "PolicyId string") {
-			t.Error("Expected PolicyId field to be 'string' type")
+		// Token struct should have PolicyId as []byte, not as a custom type
+		if !strings.Contains(code, "PolicyId []byte") {
+			t.Error("Expected PolicyId field to be '[]byte' type")
 		}
-		if !strings.Contains(code, "AssetName string") {
-			t.Error("Expected AssetName field to be 'string' type")
+		if !strings.Contains(code, "AssetName []byte") {
+			t.Error("Expected AssetName field to be '[]byte' type")
 		}
 		if !strings.Contains(code, "Amount *big.Int") {
 			t.Error("Expected Amount field to be '*big.Int' type")
@@ -70,10 +70,10 @@ func TestAdvancedTypes(t *testing.T) {
 			t.Error("Expected CustomAsset tuple type to be generated as struct")
 		}
 		// Check for tuple fields
-		if !strings.Contains(code, "Field0 string") {
+		if !strings.Contains(code, "Field0 []byte") {
 			t.Error("Expected Field0 in tuple struct")
 		}
-		if !strings.Contains(code, "Field1 string") {
+		if !strings.Contains(code, "Field1 []byte") {
 			t.Error("Expected Field1 in tuple struct")
 		}
 		// Tuple should use list serialization
@@ -100,8 +100,8 @@ func TestAdvancedTypes(t *testing.T) {
 
 	// Test 7: Lists of primitive wrappers
 	t.Run("ListOfPrimitiveWrappers", func(t *testing.T) {
-		if !strings.Contains(code, "Policies []string") {
-			t.Error("Expected Policies to be []string (list of PolicyId which is bytes)")
+		if !strings.Contains(code, "Policies [][]byte") {
+			t.Error("Expected Policies to be [][]byte (list of PolicyId which is bytes)")
 		}
 	})
 
@@ -247,8 +247,8 @@ func main() {
 
 	// Test Token with primitive wrappers (PolicyId, AssetName as bytes, Amount as int)
 	token := types.CustomToken{
-		PolicyId:  "abcd1234",
-		AssetName: "546f6b656e", // "Token"
+		PolicyId:  []byte{0xab, 0xcd, 0x12, 0x34},
+		AssetName: []byte("Token"),
 		Amount:    big.NewInt(1000),
 	}
 	if err := testRoundTrip("Token", token, func(pd types.PlutusData) (types.CustomToken, error) {
@@ -261,7 +261,7 @@ func main() {
 
 	// Test WithBoolRef (Bool as ref)
 	withBool := types.CustomWithBoolRef{
-		Name:   "74657374", // "test"
+		Name:   []byte("test"),
 		Active: true,
 	}
 	if err := testRoundTrip("WithBoolRef", withBool, func(pd types.PlutusData) (types.CustomWithBoolRef, error) {
@@ -272,10 +272,10 @@ func main() {
 		failed = true
 	}
 
-	// Test Asset tuple type (values must be valid hex strings)
+	// Test Asset tuple type
 	asset := types.CustomAsset{
-		Field0: "abcdef123456", // policy id as hex
-		Field1: "546f6b656e",   // "Token" as hex
+		Field0: []byte{0xab, 0xcd, 0xef, 0x12, 0x34, 0x56}, // policy id
+		Field1: []byte("Token"),
 	}
 	if err := testRoundTrip("Asset", asset, func(pd types.PlutusData) (types.CustomAsset, error) {
 		var v types.CustomAsset
@@ -288,7 +288,7 @@ func main() {
 	// Test TupleIntBytearray
 	tuple := types.TupleIntBytearray{
 		Field0: big.NewInt(42),
-		Field1: "48656c6c6f", // "Hello"
+		Field1: []byte("Hello"),
 	}
 	if err := testRoundTrip("TupleIntBytearray", tuple, func(pd types.PlutusData) (types.TupleIntBytearray, error) {
 		var v types.TupleIntBytearray
@@ -298,9 +298,9 @@ func main() {
 		failed = true
 	}
 
-	// Test Address with Option<Credential> (hex values) - None case (nil)
+	// Test Address with Option<Credential> - None case (nil)
 	addr := types.CustomAddress{
-		Payment: types.CustomCredentialVerificationKey{Value: "aabbccdd1122"},
+		Payment: types.CustomCredentialVerificationKey{Value: []byte{0xaa, 0xbb, 0xcc, 0xdd, 0x11, 0x22}},
 		Stake:   nil, // None
 	}
 	if err := testRoundTrip("Address", addr, func(pd types.PlutusData) (types.CustomAddress, error) {
@@ -311,10 +311,10 @@ func main() {
 		failed = true
 	}
 
-	// Test Address with Some(Credential) (hex values)
+	// Test Address with Some(Credential)
 	addrWithStake := types.CustomAddress{
-		Payment: types.CustomCredentialScript{Value: "112233445566"},
-		Stake:   types.CustomCredentialVerificationKey{Value: "778899aabbcc"}, // Some value
+		Payment: types.CustomCredentialScript{Value: []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}},
+		Stake:   types.CustomCredentialVerificationKey{Value: []byte{0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc}}, // Some value
 	}
 	if err := testRoundTrip("Address(with stake)", addrWithStake, func(pd types.PlutusData) (types.CustomAddress, error) {
 		var v types.CustomAddress
@@ -326,7 +326,7 @@ func main() {
 
 	// Test WithData (Data type as interface{})
 	withData := types.CustomWithData{
-		Label: "6c6162656c", // "label"
+		Label: []byte("label"),
 		Data:  types.NewConstrPlutusData(0, types.NewIntPlutusData(big.NewInt(123))),
 	}
 	if err := testRoundTrip("WithData", withData, func(pd types.PlutusData) (types.CustomWithData, error) {
@@ -349,9 +349,9 @@ func main() {
 		failed = true
 	}
 
-	// Test WithPolicyList (list of primitive wrappers - hex values)
+	// Test WithPolicyList (list of primitive wrappers)
 	withPolicyList := types.CustomWithPolicyList{
-		Policies: []string{"aabb11", "ccdd22", "eeff33"},
+		Policies: [][]byte{{0xaa, 0xbb, 0x11}, {0xcc, 0xdd, 0x22}, {0xee, 0xff, 0x33}},
 	}
 	if err := testRoundTrip("WithPolicyList", withPolicyList, func(pd types.PlutusData) (types.CustomWithPolicyList, error) {
 		var v types.CustomWithPolicyList

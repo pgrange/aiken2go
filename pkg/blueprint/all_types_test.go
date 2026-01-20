@@ -89,7 +89,7 @@ func main() {
 	var failed bool
 
 	// Test SimpleString (now StringValidatorSimpleString with full path)
-	simpleString := types.StringValidatorSimpleString{Message: "48656c6c6f"} // "Hello"
+	simpleString := types.StringValidatorSimpleString{Message: []byte("Hello")}
 	if err := testRoundTrip("SimpleString", simpleString, func(pd types.PlutusData) (types.StringValidatorSimpleString, error) {
 		var v types.StringValidatorSimpleString
 		return v, v.FromPlutusData(pd)
@@ -110,7 +110,7 @@ func main() {
 
 	// Test MultipleFields with Bool
 	multipleFields := types.StringValidatorMultipleFields{
-		Name:   "416c696365", // "Alice"
+		Name:   []byte("Alice"),
 		Age:    big.NewInt(30),
 		Active: true,
 	}
@@ -134,9 +134,9 @@ func main() {
 		failed = true
 	}
 
-	// Test WithStringList (list of strings)
+	// Test WithStringList (list of byte arrays)
 	withStringList := types.StringValidatorWithStringList{
-		Names: []string{"416c696365", "426f62"}, // "Alice", "Bob"
+		Names: [][]byte{[]byte("Alice"), []byte("Bob")},
 	}
 	if err := testRoundTrip("WithStringList", withStringList, func(pd types.PlutusData) (types.StringValidatorWithStringList, error) {
 		var v types.StringValidatorWithStringList
@@ -148,7 +148,7 @@ func main() {
 
 	// Test WithOption (with Some value)
 	withOptionSome := types.StringValidatorWithOption{
-		Label:      "6c6162656c", // "label"
+		Label:      []byte("label"),
 		MaybeValue: big.NewInt(100), // Some value (pointer is non-nil)
 	}
 	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
@@ -161,7 +161,7 @@ func main() {
 
 	// Test WithOption (with None)
 	withOptionNone := types.StringValidatorWithOption{
-		Label:      "6c6162656c", // "label"
+		Label:      []byte("label"),
 		MaybeValue: nil, // None (nil pointer)
 	}
 	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
@@ -193,7 +193,7 @@ func main() {
 	}
 
 	// Test Status enum - Pending variant with data
-	statusPending := types.StringValidatorStatusPending{Reason: "74657374"} // "test"
+	statusPending := types.StringValidatorStatusPending{Reason: []byte("test")}
 	if err := testRoundTrip("StatusPending", statusPending, func(pd types.PlutusData) (types.StringValidatorStatusPending, error) {
 		var v types.StringValidatorStatusPending
 		return v, v.FromPlutusData(pd)
@@ -204,7 +204,7 @@ func main() {
 
 	// Test Nested type
 	nested := types.StringValidatorNested{
-		Inner: types.StringValidatorSimpleString{Message: "696e6e6572"}, // "inner"
+		Inner: types.StringValidatorSimpleString{Message: []byte("inner")},
 		Count: big.NewInt(5),
 	}
 	if err := testRoundTrip("Nested", nested, func(pd types.PlutusData) (types.StringValidatorNested, error) {
@@ -217,7 +217,7 @@ func main() {
 
 	// Test WithEnum (struct containing enum)
 	withEnum := types.StringValidatorWithEnum{
-		Id:     "6d7969640a", // "myid"
+		Id:     []byte("myid"),
 		Status: types.StringValidatorStatusActive{},
 	}
 	if err := testRoundTrip("WithEnum", withEnum, func(pd types.PlutusData) (types.StringValidatorWithEnum, error) {
@@ -231,8 +231,8 @@ func main() {
 	// Test WithRecordList (list of structs)
 	withRecordList := types.StringValidatorWithRecordList{
 		Entries: []types.StringValidatorSimpleString{
-			{Message: "6f6e65"},   // "one"
-			{Message: "74776f"},  // "two"
+			{Message: []byte("one")},
+			{Message: []byte("two")},
 		},
 	}
 	if err := testRoundTrip("WithRecordList", withRecordList, func(pd types.PlutusData) (types.StringValidatorWithRecordList, error) {
@@ -245,7 +245,7 @@ func main() {
 
 	// Test WithOptionalNested
 	withOptionalNested := types.StringValidatorWithOptionalNested{
-		Data: &types.StringValidatorSimpleString{Message: "6f7074"}, // Some value (pointer)
+		Data: &types.StringValidatorSimpleString{Message: []byte("opt")}, // Some value (pointer)
 	}
 	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd types.PlutusData) (types.StringValidatorWithOptionalNested, error) {
 		var v types.StringValidatorWithOptionalNested
