@@ -4,7 +4,9 @@ Generate Go types from Aiken's CIP-0057 Plutus Blueprint for building Cardano tr
 
 ## Overview
 
-`aiken2go` reads Aiken's `plutus.json` blueprint files and generates Go types that can be serialized to/from CBOR Plutus Data format. This allows you to construct datums and redeemers in Go for Cardano transactions.
+`aiken2go` reads Aiken's `plutus.json` blueprint files and generates **standalone** Go types that can be serialized to/from CBOR Plutus Data format. This allows you to construct datums and redeemers in Go for Cardano transactions.
+
+The generated code is self-contained with no external dependencies (except for the CBOR library).
 
 ## Requirements
 
@@ -45,79 +47,185 @@ aiken2go -o types.go -p mypackage plutus.json
 
 The generator produces:
 
+- **PlutusData types** embedded directly in the generated file
 - **Struct types** for single-constructor types (records)
 - **Interface types** for enums (types with multiple constructors)
 - **Variant structs** for each enum variant
 - **`ToPlutusData()` methods** for serialization
 - **`FromPlutusData()` methods** for deserialization
-- **`<Type>FromPlutusData()` functions** for enum types
+- **`<Type>FromPlutusData()` factory functions** for decoding enum types
 
-### Example
+### Type Naming
 
-Given an Aiken type:
+Type names include the full module path to avoid collisions when multiple modules define types with the same name:
 
-```aiken
-type PayoutStatus {
-  Active
-  Paused { reason: ByteArray }
-}
-```
+| Aiken Definition | Go Type Name |
+|------------------|--------------|
+| `types/Payout` | `TypesPayout` |
+| `v0_1/types/Settings` | `V01TypesSettings` |
+| `multisig/MultisigScript` | `MultisigMultisigScript` |
 
-The generator produces:
+## Working with Struct Types
 
-```go
-// PayoutStatus is an enum type with multiple constructors.
-type PayoutStatus interface {
-    isPayoutStatus()
-    ToPlutusData() (blueprint.PlutusData, error)
-}
-
-// PayoutStatusFromPlutusData decodes a PayoutStatus from PlutusData.
-func PayoutStatusFromPlutusData(pd blueprint.PlutusData) (PayoutStatus, error) { ... }
-
-type PayoutStatusActive struct{}
-func (PayoutStatusActive) isPayoutStatus() {}
-func (v PayoutStatusActive) ToPlutusData() (blueprint.PlutusData, error) { ... }
-func (v *PayoutStatusActive) FromPlutusData(pd blueprint.PlutusData) error { ... }
-
-type PayoutStatusPaused struct {
-    Reason string
-}
-func (PayoutStatusPaused) isPayoutStatus() {}
-func (v PayoutStatusPaused) ToPlutusData() (blueprint.PlutusData, error) { ... }
-func (v *PayoutStatusPaused) FromPlutusData(pd blueprint.PlutusData) error { ... }
-```
-
-### Using Generated Types
+For simple struct types (single constructor), use `ToPlutusData()` and `FromPlutusData()` directly:
 
 ```go
-import (
-    "github.com/pgrange/aiken_to_go/pkg/blueprint"
-    "myproject/contracts" // generated code
-)
+import "myproject/contracts" // generated code
 
 // Create a datum
-datum := contracts.MyDatum{
-    Owner: "deadbeef...",
+datum := contracts.TypesMyDatum{
+    Owner:  "deadbeef...", // ByteArray fields are hex strings
     Amount: big.NewInt(1000000),
 }
 
-// Serialize to CBOR for transaction
+// Serialize to CBOR
 pd, err := datum.ToPlutusData()
 if err != nil {
     return err
 }
 cborBytes, err := pd.MarshalCBOR()
 
-// Or get hex string
+// Or get hex string directly
 hexString, err := pd.ToHex()
 
 // Deserialize from CBOR
-var decoded contracts.MyDatum
-var pd blueprint.PlutusData
-pd.UnmarshalCBOR(cborBytes)
-decoded.FromPlutusData(pd)
+var pd contracts.PlutusData
+if err := pd.UnmarshalCBOR(cborBytes); err != nil {
+    return err
+}
+var decoded contracts.TypesMyDatum
+if err := decoded.FromPlutusData(pd); err != nil {
+    return err
+}
 ```
+
+## Working with Enum Types
+
+Enum types (Aiken types with multiple constructors) require special handling because you may not know which variant you're decoding until runtime.
+
+### Example Aiken Enum
+
+```aiken
+pub type Action {
+  Send { to: ByteArray, amount: Int }
+  Receive { from: ByteArray }
+  Cancel
+}
+```
+
+### Generated Go Code Structure
+
+```go
+// Interface for the enum
+type Action interface {
+    isAction()
+    ToPlutusData() (PlutusData, error)
+}
+
+// Factory function to decode any variant
+func ActionFromPlutusData(pd PlutusData) (Action, error)
+
+// Variant structs
+type ActionSend struct {
+    To     string   // ByteArray as hex
+    Amount *big.Int
+}
+type ActionReceive struct {
+    From string
+}
+type ActionCancel struct{}
+```
+
+### Encoding an Enum Value
+
+When encoding, you know which variant you're creating:
+
+```go
+// Create a Send action
+action := contracts.ActionSend{
+    To:     "deadbeef1234",
+    Amount: big.NewInt(1000000),
+}
+
+// Serialize to CBOR
+pd, err := action.ToPlutusData()
+if err != nil {
+    return err
+}
+cborBytes, err := pd.MarshalCBOR()
+```
+
+### Decoding an Enum Value (Unknown Variant)
+
+When decoding, use the **factory function** to automatically detect the variant:
+
+```go
+// 1. Decode CBOR to PlutusData
+var pd contracts.PlutusData
+if err := pd.UnmarshalCBOR(cborBytes); err != nil {
+    return err
+}
+
+// 2. Use the factory function - it examines the constructor index
+//    and returns the correct variant type
+action, err := contracts.ActionFromPlutusData(pd)
+if err != nil {
+    return err
+}
+
+// 3. Use type switch to handle each variant
+switch a := action.(type) {
+case contracts.ActionSend:
+    fmt.Printf("Send %s to %s\n", a.Amount.String(), a.To)
+case contracts.ActionReceive:
+    fmt.Printf("Receive from %s\n", a.From)
+case contracts.ActionCancel:
+    fmt.Println("Cancel")
+default:
+    return fmt.Errorf("unknown action type: %T", a)
+}
+```
+
+### Decoding an Enum Value (Known Variant)
+
+If you know which variant to expect, you can decode directly:
+
+```go
+var pd contracts.PlutusData
+pd.UnmarshalCBOR(cborBytes)
+
+// Decode directly to the expected variant
+var send contracts.ActionSend
+if err := send.FromPlutusData(pd); err != nil {
+    // Will fail if the CBOR data is not a Send variant
+    return err
+}
+```
+
+### How the Factory Function Works
+
+The factory function examines `pd.Constr.Index` (the CBOR constructor tag) to determine which variant to instantiate:
+
+| Constructor Index | Aiken Variant | Go Type |
+|-------------------|---------------|---------|
+| 0 | `Send` | `ActionSend` |
+| 1 | `Receive` | `ActionReceive` |
+| 2 | `Cancel` | `ActionCancel` |
+
+The index corresponds to the order of declaration in the Aiken source.
+
+## Type Mappings
+
+| Aiken Type | Go Type |
+|------------|---------|
+| `Int` | `*big.Int` |
+| `ByteArray` | `string` (hex-encoded) |
+| `Bool` | `bool` |
+| `List<T>` | `[]T` |
+| `Option<T>` | `OptionT` struct with `Value` and `IsSet` fields |
+| `Data` | `interface{}` (raw PlutusData) |
+| Tuple types | Struct with `Field0`, `Field1`, etc. |
+| Named list types | Type alias with serialization methods |
 
 ## PlutusData Format
 
@@ -156,8 +264,12 @@ testdata/
 │   └── plutus.json        # Basic validators and types
 ├── complex/
 │   └── plutus.json        # Enum types, nested modules
-└── tuple/
-    └── plutus.json        # Tuple types (items as array)
+├── tuple/
+│   └── plutus.json        # Tuple types (items as array)
+├── all_types/
+│   └── plutus.json        # Comprehensive type coverage
+└── advanced_types/
+    └── plutus.json        # Advanced patterns (Data, Bool refs, etc.)
 ```
 
 ## Project Structure
@@ -181,7 +293,6 @@ testdata/
 ## Limitations
 
 - Map types (`Pairs$`) are not fully supported for serialization (TODO comments generated)
-- Tuple types are represented as `[]interface{}`
 
 ## License
 
