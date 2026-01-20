@@ -222,10 +222,42 @@ The index corresponds to the order of declaration in the Aiken source.
 | `ByteArray` | `string` (hex-encoded) |
 | `Bool` | `bool` |
 | `List<T>` | `[]T` |
-| `Option<T>` | `OptionT` struct with `Value` and `IsSet` fields |
+| `Option<T>` | `*T` (pointer, nil = None) |
+| `Option<Int>` | `*big.Int` (nil = None) |
+| `Option<EnumType>` | `EnumType` (interface, nil = None) |
 | `Data` | `interface{}` (raw PlutusData) |
 | Tuple types | Struct with `Field0`, `Field1`, etc. |
 | Named list types | Type alias with serialization methods |
+
+### Option Types
+
+Option types use Go pointers for idiomatic nullable values:
+
+```go
+// Aiken: Option<ByteArray>
+// Go: *string
+
+// Some value
+owner := "deadbeef1234"
+datum.Owner = &owner
+
+// None
+datum.Owner = nil
+```
+
+For types that are already pointers (`*big.Int`) or interfaces (enum types), the type is used directly since they can already be nil:
+
+```go
+// Aiken: Option<Int>
+// Go: *big.Int (same as Int, nil = None)
+datum.Amount = big.NewInt(1000000)  // Some
+datum.Amount = nil                   // None
+
+// Aiken: Option<Credential> (where Credential is an enum)
+// Go: Credential (interface, nil = None)
+datum.Stake = CredentialVerificationKey{Value: "..."}  // Some
+datum.Stake = nil                                       // None
+```
 
 ## PlutusData Format
 

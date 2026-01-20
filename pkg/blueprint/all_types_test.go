@@ -149,7 +149,7 @@ func main() {
 	// Test WithOption (with Some value)
 	withOptionSome := types.StringValidatorWithOption{
 		Label:      "6c6162656c", // "label"
-		MaybeValue: types.OptionInt{Value: big.NewInt(100), IsSet: true},
+		MaybeValue: big.NewInt(100), // Some value (pointer is non-nil)
 	}
 	if err := testRoundTrip("WithOption(Some)", withOptionSome, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
 		var v types.StringValidatorWithOption
@@ -162,7 +162,7 @@ func main() {
 	// Test WithOption (with None)
 	withOptionNone := types.StringValidatorWithOption{
 		Label:      "6c6162656c", // "label"
-		MaybeValue: types.OptionInt{IsSet: false},
+		MaybeValue: nil, // None (nil pointer)
 	}
 	if err := testRoundTrip("WithOption(None)", withOptionNone, func(pd types.PlutusData) (types.StringValidatorWithOption, error) {
 		var v types.StringValidatorWithOption
@@ -245,10 +245,7 @@ func main() {
 
 	// Test WithOptionalNested
 	withOptionalNested := types.StringValidatorWithOptionalNested{
-		Data: types.OptionStringValidatorSimpleString{
-			Value: types.StringValidatorSimpleString{Message: "6f7074"},
-			IsSet: true,
-		},
+		Data: &types.StringValidatorSimpleString{Message: "6f7074"}, // Some value (pointer)
 	}
 	if err := testRoundTrip("WithOptionalNested", withOptionalNested, func(pd types.PlutusData) (types.StringValidatorWithOptionalNested, error) {
 		var v types.StringValidatorWithOptionalNested
