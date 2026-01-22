@@ -52,14 +52,10 @@ func TestAdvancedTypes(t *testing.T) {
 		}
 	})
 
-	// Test 3: Data type should be interface{}
+	// Test 3: Data type should be PlutusData
 	t.Run("DataType", func(t *testing.T) {
-		if !strings.Contains(code, "Data interface{}") {
-			t.Error("Expected Data field to be 'interface{}' type")
-		}
-		// Check for proper Data handling (type assertion to PlutusData)
-		if !strings.Contains(code, ".(PlutusData)") {
-			t.Error("Expected type assertion to PlutusData for Data type")
+		if !strings.Contains(code, "Data PlutusData") {
+			t.Error("Expected Data field to be 'PlutusData' type")
 		}
 	})
 

@@ -590,13 +590,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 			g.writeLine("}")
 		case "Data":
 			// Data type is raw PlutusData
-			g.writeLine(fmt.Sprintf("inner%d, ok := v.%s.(PlutusData)", index, fieldName))
-			g.writeLine("if !ok {")
-			g.indentInc()
-			g.writeLine(`return PlutusData{}, errors.New("Data field must be PlutusData")`)
-			g.indentDec()
-			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("fields[%d] = inner%d", index, index))
+			g.writeLine(fmt.Sprintf("fields[%d] = v.%s", index, fieldName))
 		default:
 			if strings.HasPrefix(refName, "List$") {
 				// List type - handle inline
@@ -1700,13 +1694,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(v.Value)), nil", constrIndex))
 		case "Data":
 			// Data type is raw PlutusData - pass through directly
-			g.writeLine(fmt.Sprintf("inner, ok := v.Value.(PlutusData)"))
-			g.writeLine("if !ok {")
-			g.indentInc()
-			g.writeLine(`return PlutusData{}, errors.New("Value must be PlutusData")`)
-			g.indentDec()
-			g.writeLine("}")
-			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
+			g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, v.Value), nil", constrIndex))
 		default:
 			if g.isPrimitiveWrapper(refName, "bytes") {
 				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, NewBytesPlutusData(v.Value)), nil", constrIndex))
@@ -1908,7 +1896,7 @@ func (g *Generator) refToGoType(refName string) string {
 	case "Bool":
 		return "bool"
 	case "Data":
-		return "interface{}"
+		return "PlutusData"
 	case "Void":
 		return "struct{}"
 	default:

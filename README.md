@@ -226,7 +226,7 @@ The index corresponds to the order of declaration in the Aiken source.
 | `Option<Int>` | `*big.Int` (nil = None) |
 | `Option<ByteArray>` | `*[]byte` (nil = None) |
 | `Option<EnumType>` | `EnumType` (interface, nil = None) |
-| `Data` | `interface{}` (raw PlutusData) |
+| `Data` | `PlutusData` |
 | Tuple types | Struct with `Field0`, `Field1`, etc. |
 | Named list types | Type alias with serialization methods |
 
