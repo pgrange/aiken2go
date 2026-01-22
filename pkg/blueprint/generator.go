@@ -151,7 +151,7 @@ func (g *Generator) writePlutusDataTypes() {
 	g.writeLine("// MarshalCBOR serializes PlutusData to CBOR bytes.")
 	g.writeLine("func (p PlutusData) MarshalCBOR() ([]byte, error) {")
 	g.indentInc()
-	g.writeLine("em, err := cbor.EncOptions{BigIntConvert: cbor.BigIntConvertNone}.EncMode()")
+	g.writeLine("em, err := cbor.EncOptions{BigIntConvert: cbor.BigIntConvertShortest}.EncMode()")
 	g.writeLine("if err != nil { return nil, err }")
 	g.writeLine("val, err := p.toCBORValue()")
 	g.writeLine("if err != nil { return nil, err }")
