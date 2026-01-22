@@ -176,3 +176,89 @@ func TestPlutusData_RoundTrip(t *testing.T) {
 		t.Error("round-trip failed: values don't match")
 	}
 }
+
+func TestPlutusData_IndefiniteLengthArrays(t *testing.T) {
+	// This test verifies that CBOR encoding matches Aiken's format:
+	// - Non-empty arrays use indefinite-length encoding (0x9f...0xff)
+	// - Empty arrays use definite-length encoding (0x80)
+	// - Tags use minimal encoding (0xd8 0x79 for tag 121, not 0xd9 0x00 0x79)
+
+	t.Run("EmptyConstructor", func(t *testing.T) {
+		// Constructor 0 with no fields should be: d879 80 (tag 121 + empty array)
+		pd := NewConstrPlutusData(0)
+		data, err := pd.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+		expected := []byte{0xd8, 0x79, 0x80}
+		if string(data) != string(expected) {
+			t.Errorf("expected %x, got %x", expected, data)
+		}
+	})
+
+	t.Run("NonEmptyConstructor", func(t *testing.T) {
+		// Constructor 0 with one integer field should use indefinite array:
+		// d879 9f 01 ff (tag 121 + indefinite array + int 1 + break)
+		pd := NewConstrPlutusData(0, NewIntPlutusData(big.NewInt(1)))
+		data, err := pd.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+		expected := []byte{0xd8, 0x79, 0x9f, 0x01, 0xff}
+		if string(data) != string(expected) {
+			t.Errorf("expected %x, got %x", expected, data)
+		}
+	})
+
+	t.Run("List", func(t *testing.T) {
+		// List with two integers should use indefinite array:
+		// 9f 01 02 ff (indefinite array + int 1 + int 2 + break)
+		pd := NewListPlutusData(
+			NewIntPlutusData(big.NewInt(1)),
+			NewIntPlutusData(big.NewInt(2)),
+		)
+		data, err := pd.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+		expected := []byte{0x9f, 0x01, 0x02, 0xff}
+		if string(data) != string(expected) {
+			t.Errorf("expected %x, got %x", expected, data)
+		}
+	})
+
+	t.Run("NestedStructure", func(t *testing.T) {
+		// Constr(0, [Constr(1, [])]) should be:
+		// d879 9f d87a 80 ff
+		// tag121 + indef[ tag122 + empty[] ] + break
+		pd := NewConstrPlutusData(0, NewConstrPlutusData(1))
+		data, err := pd.MarshalCBOR()
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+		expected := []byte{0xd8, 0x79, 0x9f, 0xd8, 0x7a, 0x80, 0xff}
+		if string(data) != string(expected) {
+			t.Errorf("expected %x, got %x", expected, data)
+		}
+	})
+
+	t.Run("MatchesAikenFormat", func(t *testing.T) {
+		// This is the exact CBOR produced by Aiken for a ProtocolRedeemer(Mint, [Request(...)])
+		// We decode it and re-encode to verify byte-for-byte match
+		aikenHex := "d8799f9fd8799fd8799fd8799fd8799f450102000403ffd8799fd8799fd8799f450102000403ffffffffd87980ff01d8799f4ed8799f48736f6d65486173680cffffffffff"
+
+		pd, err := FromHex(aikenHex)
+		if err != nil {
+			t.Fatalf("failed to decode Aiken CBOR: %v", err)
+		}
+
+		reencoded, err := pd.ToHex()
+		if err != nil {
+			t.Fatalf("failed to re-encode: %v", err)
+		}
+
+		if reencoded != aikenHex {
+			t.Errorf("CBOR mismatch:\nexpected: %s\ngot:      %s", aikenHex, reencoded)
+		}
+	})
+}

@@ -77,20 +77,97 @@ func NewMapPlutusData(entries ...PlutusDataMapEntry) PlutusData {
 	return PlutusData{Map: entries}
 }
 
-// MarshalCBOR serializes PlutusData to CBOR bytes.
+// MarshalCBOR serializes PlutusData to CBOR bytes using indefinite-length arrays
+// to match Aiken's CBOR format.
 func (p PlutusData) MarshalCBOR() ([]byte, error) {
-	em, err := cbor.EncOptions{
-		BigIntConvert: cbor.BigIntConvertNone,
-	}.EncMode()
+	return p.toCBORBytes()
+}
+
+// toCBORBytes produces CBOR bytes with indefinite-length arrays (Aiken format).
+func (p PlutusData) toCBORBytes() ([]byte, error) {
+	em, err := cbor.EncOptions{BigIntConvert: cbor.BigIntConvertShortest}.EncMode()
 	if err != nil {
 		return nil, err
 	}
 
-	val, err := p.toCBORValue()
-	if err != nil {
-		return nil, err
+	switch {
+	case p.Constr != nil:
+		var buf bytes.Buffer
+		// Calculate tag
+		var tag uint64
+		if p.Constr.Index <= 6 {
+			tag = cborTagConstr0 + p.Constr.Index
+		} else {
+			tag = cborTagConstrBase + p.Constr.Index - 7
+		}
+		// Write CBOR tag header (minimal encoding)
+		if tag < 24 {
+			buf.WriteByte(0xc0 + byte(tag))
+		} else if tag < 256 {
+			buf.WriteByte(0xd8)
+			buf.WriteByte(byte(tag))
+		} else {
+			buf.WriteByte(0xd9)
+			buf.WriteByte(byte(tag >> 8))
+			buf.WriteByte(byte(tag))
+		}
+		// Empty arrays use definite-length, non-empty use indefinite
+		if len(p.Constr.Fields) == 0 {
+			buf.WriteByte(0x80) // empty array
+		} else {
+			buf.WriteByte(0x9f) // indefinite-length array start
+			for _, f := range p.Constr.Fields {
+				fieldBytes, err := f.toCBORBytes()
+				if err != nil {
+					return nil, err
+				}
+				buf.Write(fieldBytes)
+			}
+			buf.WriteByte(0xff) // break
+		}
+		return buf.Bytes(), nil
+
+	case p.Integer != nil:
+		return em.Marshal(p.Integer)
+
+	case p.ByteString != nil:
+		return em.Marshal(p.ByteString)
+
+	case p.List != nil:
+		var buf bytes.Buffer
+		buf.WriteByte(0x9f) // indefinite-length array start
+		for _, item := range p.List {
+			itemBytes, err := item.toCBORBytes()
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(itemBytes)
+		}
+		buf.WriteByte(0xff) // break
+		return buf.Bytes(), nil
+
+	case p.Map != nil:
+		var buf bytes.Buffer
+		buf.WriteByte(0xbf) // indefinite-length map start
+		for _, entry := range p.Map {
+			keyBytes, err := entry.Key.toCBORBytes()
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(keyBytes)
+			valBytes, err := entry.Value.toCBORBytes()
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(valBytes)
+		}
+		buf.WriteByte(0xff) // break
+		return buf.Bytes(), nil
+
+	default:
+		// Empty constructor 0
+		return []byte{0xd8, 0x79, 0x9f, 0xff}, nil
 	}
-	return em.Marshal(val)
 }
 
 // UnmarshalCBOR deserializes PlutusData from CBOR bytes.
