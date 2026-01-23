@@ -174,6 +174,14 @@ func (g *Generator) writePlutusDataTypes() {
 	g.writeLine("}")
 	g.writeLine("")
 
+	g.writeLine("// NewMapPlutusData creates a new map PlutusData.")
+	g.writeLine("func NewMapPlutusData(entries ...PlutusDataMapEntry) PlutusData {")
+	g.indentInc()
+	g.writeLine("return PlutusData{Map: entries}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+
 	// MarshalCBOR - uses indefinite-length arrays to match Aiken's CBOR format
 	g.writeLine("// MarshalCBOR serializes PlutusData to CBOR bytes using indefinite-length arrays.")
 	g.writeLine("func (p PlutusData) MarshalCBOR() ([]byte, error) {")
@@ -260,8 +268,14 @@ func (g *Generator) writePlutusDataTypes() {
 	g.writeLine("case p.Map != nil:")
 	g.indentInc()
 	g.writeLine("var buf bytes.Buffer")
-	g.writeLine("// Write indefinite-length map start")
-	g.writeLine("buf.WriteByte(0xbf)")
+	g.writeLine("// Empty maps use definite-length, non-empty use indefinite")
+	g.writeLine("if len(p.Map) == 0 {")
+	g.indentInc()
+	g.writeLine("buf.WriteByte(0xa0) // empty map (definite-length)")
+	g.indentDec()
+	g.writeLine("} else {")
+	g.indentInc()
+	g.writeLine("buf.WriteByte(0xbf) // indefinite-length map start")
 	g.writeLine("for _, entry := range p.Map {")
 	g.indentInc()
 	g.writeLine("keyBytes, err := entry.Key.toCBORBytes()")
@@ -272,8 +286,9 @@ func (g *Generator) writePlutusDataTypes() {
 	g.writeLine("buf.Write(valBytes)")
 	g.indentDec()
 	g.writeLine("}")
-	g.writeLine("// Write indefinite-length map end (break)")
-	g.writeLine("buf.WriteByte(0xff)")
+	g.writeLine("buf.WriteByte(0xff) // break")
+	g.indentDec()
+	g.writeLine("}")
 	g.writeLine("return buf.Bytes(), nil")
 	g.indentDec()
 	g.writeLine("default:")
@@ -318,6 +333,10 @@ func (g *Generator) writePlutusDataTypes() {
 	g.writeLine("case []byte:")
 	g.indentInc()
 	g.writeLine("return PlutusData{ByteString: val}, nil")
+	g.indentDec()
+	g.writeLine("case cbor.ByteString:")
+	g.indentInc()
+	g.writeLine("return PlutusData{ByteString: []byte(val)}, nil")
 	g.indentDec()
 	g.writeLine("case []interface{}:")
 	g.indentInc()
@@ -1339,9 +1358,8 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 				// List type - handle inline
 				g.writeListFieldToPlutusData(fieldName, refName, index)
 			} else if strings.HasPrefix(refName, "Pairs$") {
-				// Map type - skip for now (complex)
-				g.writeLine(fmt.Sprintf("// TODO: Map serialization for %s", fieldName))
-				g.writeLine(fmt.Sprintf("fields[%d] = PlutusData{}", index))
+				// Map type - serialize as PlutusData map
+				g.writeMapFieldToPlutusData(fieldName, refName, index)
 			} else if strings.HasPrefix(refName, "Option$") {
 				// Option type - handle as pointer
 				g.writeOptionRefToPlutusData(fieldName, refName, index)
@@ -1394,9 +1412,8 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("fields[%d] = NewListPlutusData(list%d...)", index, index))
 	case schema.IsMap():
-		// Map type - skip for now
-		g.writeLine(fmt.Sprintf("// TODO: Map serialization for %s", fieldName))
-		g.writeLine(fmt.Sprintf("fields[%d] = PlutusData{}", index))
+		// Map type - serialize inline
+		g.writeInlineMapFieldToPlutusData(fieldName, schema, index)
 	case schema.IsBoolean():
 		g.writeLine(fmt.Sprintf("if v.%s {", fieldName))
 		g.indentInc()
@@ -1495,6 +1512,267 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine(fmt.Sprintf("fields[%d] = NewListPlutusData(list%d...)", index, index))
+}
+
+func (g *Generator) writeMapFieldToPlutusData(fieldName string, refName string, index int) {
+	// Parse Pairs$keyType_valueType
+	inner := strings.TrimPrefix(refName, "Pairs$")
+	inner = strings.ReplaceAll(inner, "~1", "/")
+	parts := strings.SplitN(inner, "_", 2)
+
+	var keyType, valueType string
+	if len(parts) == 2 {
+		keyType = parts[0]
+		valueType = parts[1]
+	} else {
+		keyType = "ByteArray"
+		valueType = "ByteArray"
+	}
+
+	g.writeLine(fmt.Sprintf("mapEntries%d := make([]PlutusDataMapEntry, 0, len(v.%s))", index, fieldName))
+	g.writeLine(fmt.Sprintf("for k, val := range v.%s {", fieldName))
+	g.indentInc()
+
+	// Generate key serialization
+	g.writeMapKeyToPlutusData(keyType, index)
+
+	// Generate value serialization
+	g.writeMapValueToPlutusData(valueType, fieldName, index)
+
+	g.writeLine(fmt.Sprintf("mapEntries%d = append(mapEntries%d, PlutusDataMapEntry{Key: keyPd%d, Value: valPd%d})", index, index, index, index))
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("fields[%d] = NewMapPlutusData(mapEntries%d...)", index, index))
+}
+
+func (g *Generator) writeMapKeyToPlutusData(keyType string, index int) {
+	switch keyType {
+	case "Int":
+		g.writeLine(fmt.Sprintf("keyPd%d := NewIntPlutusData(k)", index))
+	case "ByteArray":
+		// If keyType is []byte, but Go map keys can't be []byte, so it's likely string
+		g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+	default:
+		if g.isPrimitiveWrapper(keyType, "bytes") {
+			g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+		} else if g.isPrimitiveWrapper(keyType, "integer") {
+			g.writeLine(fmt.Sprintf("keyPd%d := NewIntPlutusData(k)", index))
+		} else {
+			// Complex key type
+			g.writeLine(fmt.Sprintf("keyPd%d, err := k.ToPlutusData()", index))
+			g.writeLine("if err != nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("map key: %%w", err)`))
+			g.indentDec()
+			g.writeLine("}")
+		}
+	}
+}
+
+func (g *Generator) writeMapValueToPlutusData(valueType string, fieldName string, index int) {
+	switch valueType {
+	case "Int":
+		g.writeLine(fmt.Sprintf("valPd%d := NewIntPlutusData(val)", index))
+	case "ByteArray":
+		g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+	default:
+		if g.isPrimitiveWrapper(valueType, "bytes") {
+			g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+		} else if g.isPrimitiveWrapper(valueType, "integer") {
+			g.writeLine(fmt.Sprintf("valPd%d := NewIntPlutusData(val)", index))
+		} else if strings.HasPrefix(valueType, "Pairs$") {
+			// Nested map - parse inner types and serialize
+			innerDef := strings.TrimPrefix(valueType, "Pairs$")
+			innerDef = strings.ReplaceAll(innerDef, "~1", "/")
+			innerParts := strings.SplitN(innerDef, "_", 2)
+			innerKeyType := "ByteArray"
+			innerValueType := "ByteArray"
+			if len(innerParts) == 2 {
+				innerKeyType = innerParts[0]
+				innerValueType = innerParts[1]
+			}
+			g.writeLine(fmt.Sprintf("innerEntries%d := make([]PlutusDataMapEntry, 0, len(val))", index))
+			g.writeLine("for ik, iv := range val {")
+			g.indentInc()
+			// Serialize inner key
+			switch innerKeyType {
+			case "Int":
+				g.writeLine(fmt.Sprintf("ikPd%d := NewIntPlutusData(ik)", index))
+			case "ByteArray":
+				g.writeLine(fmt.Sprintf("ikPd%d := NewBytesPlutusData([]byte(ik))", index))
+			default:
+				if g.isPrimitiveWrapper(innerKeyType, "bytes") {
+					g.writeLine(fmt.Sprintf("ikPd%d := NewBytesPlutusData([]byte(ik))", index))
+				} else if g.isPrimitiveWrapper(innerKeyType, "integer") {
+					g.writeLine(fmt.Sprintf("ikPd%d := NewIntPlutusData(ik)", index))
+				} else {
+					g.writeLine(fmt.Sprintf("ikPd%d := NewBytesPlutusData([]byte(ik))", index))
+				}
+			}
+			// Serialize inner value
+			switch innerValueType {
+			case "Int":
+				g.writeLine(fmt.Sprintf("ivPd%d := NewIntPlutusData(iv)", index))
+			case "ByteArray":
+				g.writeLine(fmt.Sprintf("ivPd%d := NewBytesPlutusData(iv)", index))
+			default:
+				if g.isPrimitiveWrapper(innerValueType, "bytes") {
+					g.writeLine(fmt.Sprintf("ivPd%d := NewBytesPlutusData(iv)", index))
+				} else if g.isPrimitiveWrapper(innerValueType, "integer") {
+					g.writeLine(fmt.Sprintf("ivPd%d := NewIntPlutusData(iv)", index))
+				} else {
+					g.writeLine(fmt.Sprintf("ivPd%d, err := iv.ToPlutusData()", index))
+					g.writeLine("if err != nil {")
+					g.indentInc()
+					g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: nested map value: %%w", err)`, fieldName))
+					g.indentDec()
+					g.writeLine("}")
+				}
+			}
+			g.writeLine(fmt.Sprintf("innerEntries%d = append(innerEntries%d, PlutusDataMapEntry{Key: ikPd%d, Value: ivPd%d})", index, index, index, index))
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine(fmt.Sprintf("valPd%d := NewMapPlutusData(innerEntries%d...)", index, index))
+		} else {
+			// Complex value type
+			g.writeLine(fmt.Sprintf("valPd%d, err := val.ToPlutusData()", index))
+			g.writeLine("if err != nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+			g.indentDec()
+			g.writeLine("}")
+		}
+	}
+}
+
+func (g *Generator) writeInlineMapFieldToPlutusData(fieldName string, schema *Schema, index int) {
+	// For inline map schemas
+	keySchema := schema.Keys
+	valueSchema := schema.Values
+
+	g.writeLine(fmt.Sprintf("mapEntries%d := make([]PlutusDataMapEntry, 0, len(v.%s))", index, fieldName))
+	g.writeLine(fmt.Sprintf("for k, val := range v.%s {", fieldName))
+	g.indentInc()
+
+	// Generate key serialization based on schema
+	g.writeInlineMapKeyToPlutusData(keySchema, index)
+
+	// Generate value serialization based on schema
+	g.writeInlineMapValueToPlutusData(valueSchema, fieldName, index)
+
+	g.writeLine(fmt.Sprintf("mapEntries%d = append(mapEntries%d, PlutusDataMapEntry{Key: keyPd%d, Value: valPd%d})", index, index, index, index))
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("fields[%d] = NewMapPlutusData(mapEntries%d...)", index, index))
+}
+
+func (g *Generator) writeInlineMapKeyToPlutusData(keySchema *Schema, index int) {
+	if keySchema == nil {
+		g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+		return
+	}
+
+	switch {
+	case keySchema.IsRef():
+		refName := keySchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine(fmt.Sprintf("keyPd%d := NewIntPlutusData(k)", index))
+		case "ByteArray":
+			g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine(fmt.Sprintf("keyPd%d := NewIntPlutusData(k)", index))
+			} else {
+				g.writeLine(fmt.Sprintf("keyPd%d, err := k.ToPlutusData()", index))
+				g.writeLine("if err != nil {")
+				g.indentInc()
+				g.writeLine(`return PlutusData{}, fmt.Errorf("map key: %w", err)`)
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case keySchema.IsInteger():
+		g.writeLine(fmt.Sprintf("keyPd%d := NewIntPlutusData(k)", index))
+	case keySchema.IsBytes():
+		g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+	default:
+		g.writeLine(fmt.Sprintf("keyPd%d := NewBytesPlutusData([]byte(k))", index))
+	}
+}
+
+func (g *Generator) writeInlineMapValueToPlutusData(valueSchema *Schema, fieldName string, index int) {
+	if valueSchema == nil {
+		g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+		return
+	}
+
+	switch {
+	case valueSchema.IsRef():
+		refName := valueSchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine(fmt.Sprintf("valPd%d := NewIntPlutusData(val)", index))
+		case "ByteArray":
+			g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine(fmt.Sprintf("valPd%d := NewIntPlutusData(val)", index))
+			} else {
+				g.writeLine(fmt.Sprintf("valPd%d, err := val.ToPlutusData()", index))
+				g.writeLine("if err != nil {")
+				g.indentInc()
+				g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case valueSchema.IsInteger():
+		g.writeLine(fmt.Sprintf("valPd%d := NewIntPlutusData(val)", index))
+	case valueSchema.IsBytes():
+		g.writeLine(fmt.Sprintf("valPd%d := NewBytesPlutusData(val)", index))
+	case valueSchema.IsMap():
+		// Nested map - serialize inline
+		innerKeySchema := valueSchema.Keys
+		innerValueSchema := valueSchema.Values
+		g.writeLine(fmt.Sprintf("innerEntries%d := make([]PlutusDataMapEntry, 0, len(val))", index))
+		g.writeLine("for ik, iv := range val {")
+		g.indentInc()
+		// Serialize inner key
+		if innerKeySchema != nil && innerKeySchema.IsInteger() {
+			g.writeLine(fmt.Sprintf("ikPd%d := NewIntPlutusData(ik)", index))
+		} else {
+			g.writeLine(fmt.Sprintf("ikPd%d := NewBytesPlutusData([]byte(ik))", index))
+		}
+		// Serialize inner value
+		if innerValueSchema != nil && innerValueSchema.IsInteger() {
+			g.writeLine(fmt.Sprintf("ivPd%d := NewIntPlutusData(iv)", index))
+		} else if innerValueSchema != nil && innerValueSchema.IsBytes() {
+			g.writeLine(fmt.Sprintf("ivPd%d := NewBytesPlutusData(iv)", index))
+		} else {
+			g.writeLine(fmt.Sprintf("ivPd%d, err := iv.ToPlutusData()", index))
+			g.writeLine("if err != nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: nested map value: %%w", err)`, fieldName))
+			g.indentDec()
+			g.writeLine("}")
+		}
+		g.writeLine(fmt.Sprintf("innerEntries%d = append(innerEntries%d, PlutusDataMapEntry{Key: ikPd%d, Value: ivPd%d})", index, index, index, index))
+		g.indentDec()
+		g.writeLine("}")
+		g.writeLine(fmt.Sprintf("valPd%d := NewMapPlutusData(innerEntries%d...)", index, index))
+	default:
+		g.writeLine(fmt.Sprintf("valPd%d, err := val.ToPlutusData()", index))
+		g.writeLine("if err != nil {")
+		g.indentInc()
+		g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+		g.indentDec()
+		g.writeLine("}")
+	}
 }
 
 func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int) {
@@ -1772,8 +2050,8 @@ func (g *Generator) writeFieldFromPlutusData(fieldName string, schema *Schema, i
 				// List type - handle inline
 				g.writeListFieldFromPlutusData(fieldName, refName, index)
 			} else if strings.HasPrefix(refName, "Pairs$") {
-				// Map type - skip for now
-				g.writeLine(fmt.Sprintf("// TODO: Map deserialization for %s", fieldName))
+				// Map type - deserialize from PlutusData map
+				g.writeMapFieldFromPlutusData(fieldName, refName, index)
 			} else if strings.HasPrefix(refName, "Option$") {
 				// Option type - handle as pointer
 				g.writeOptionRefFromPlutusData(fieldName, refName, index)
@@ -1830,7 +2108,7 @@ func (g *Generator) writeFieldFromPlutusData(fieldName string, schema *Schema, i
 	case schema.IsList():
 		g.writeListFieldFromPlutusDataInline(fieldName, schema, index)
 	case schema.IsMap():
-		g.writeLine(fmt.Sprintf("// TODO: Map deserialization for %s", fieldName))
+		g.writeInlineMapFieldFromPlutusData(fieldName, schema, index)
 	case schema.IsBoolean():
 		g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Constr == nil {", index))
 		g.indentInc()
@@ -1986,6 +2264,232 @@ func (g *Generator) writeListFieldFromPlutusDataInline(fieldName string, schema 
 		g.writeLine("}")
 	} else {
 		g.writeLine(fmt.Sprintf("// TODO: List deserialization for %s", fieldName))
+	}
+}
+
+func (g *Generator) writeMapFieldFromPlutusData(fieldName string, refName string, index int) {
+	// Parse Pairs$keyType_valueType
+	inner := strings.TrimPrefix(refName, "Pairs$")
+	inner = strings.ReplaceAll(inner, "~1", "/")
+	parts := strings.SplitN(inner, "_", 2)
+
+	var keyType, valueType string
+	if len(parts) == 2 {
+		keyType = parts[0]
+		valueType = parts[1]
+	} else {
+		keyType = "ByteArray"
+		valueType = "ByteArray"
+	}
+
+	goKeyType := g.refToGoType(keyType)
+	// []byte can't be a map key in Go, use string
+	if goKeyType == "[]byte" {
+		goKeyType = "string"
+	}
+	goValueType := g.refToGoType(valueType)
+
+	g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Map == nil {", index))
+	g.indentInc()
+	g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected map, got %%s", plutusDataTypeString(pd.Constr.Fields[%d]))`, fieldName, index))
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("v.%s = make(map[%s]%s)", fieldName, goKeyType, goValueType))
+	g.writeLine(fmt.Sprintf("for _, entry := range pd.Constr.Fields[%d].Map {", index))
+	g.indentInc()
+
+	// Generate key deserialization
+	g.writeMapKeyFromPlutusData(keyType, fieldName)
+
+	// Generate value deserialization
+	g.writeMapValueFromPlutusData(valueType, fieldName)
+
+	g.writeLine("v." + fieldName + "[mapKey] = mapVal")
+	g.indentDec()
+	g.writeLine("}")
+}
+
+func (g *Generator) writeMapKeyFromPlutusData(keyType string, fieldName string) {
+	switch keyType {
+	case "Int":
+		g.writeLine("mapKey := entry.Key.Integer")
+	case "ByteArray":
+		// Go map keys can't be []byte, so convert to string
+		g.writeLine("mapKey := string(entry.Key.ByteString)")
+	default:
+		if g.isPrimitiveWrapper(keyType, "bytes") {
+			g.writeLine("mapKey := string(entry.Key.ByteString)")
+		} else if g.isPrimitiveWrapper(keyType, "integer") {
+			g.writeLine("mapKey := entry.Key.Integer")
+		} else {
+			// Complex key type
+			goKeyType := g.refToGoType(keyType)
+			g.writeLine(fmt.Sprintf("var mapKey %s", goKeyType))
+			g.writeLine("if err := mapKey.FromPlutusData(entry.Key); err != nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: map key: %%w", err)`, fieldName))
+			g.indentDec()
+			g.writeLine("}")
+		}
+	}
+}
+
+func (g *Generator) writeMapValueFromPlutusData(valueType string, fieldName string) {
+	switch valueType {
+	case "Int":
+		g.writeLine("mapVal := entry.Value.Integer")
+	case "ByteArray":
+		g.writeLine("mapVal := entry.Value.ByteString")
+	default:
+		if g.isPrimitiveWrapper(valueType, "bytes") {
+			g.writeLine("mapVal := entry.Value.ByteString")
+		} else if g.isPrimitiveWrapper(valueType, "integer") {
+			g.writeLine("mapVal := entry.Value.Integer")
+		} else if strings.HasPrefix(valueType, "Pairs$") {
+			// Nested map - needs type-specific handling
+			goValueType := g.pairsToGoType(valueType)
+			g.writeLine(fmt.Sprintf("var mapVal %s", goValueType))
+			g.writeLine("// Nested map deserialization")
+			g.writeLine("if entry.Value.Map != nil {")
+			g.indentInc()
+			g.writeLine("mapVal = make(" + goValueType + ")")
+			g.writeLine("// TODO: deserialize nested map entries")
+			g.indentDec()
+			g.writeLine("}")
+		} else {
+			// Complex value type
+			goValueType := g.refToGoType(valueType)
+			g.writeLine(fmt.Sprintf("var mapVal %s", goValueType))
+			g.writeLine("if err := mapVal.FromPlutusData(entry.Value); err != nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+			g.indentDec()
+			g.writeLine("}")
+		}
+	}
+}
+
+func (g *Generator) writeInlineMapFieldFromPlutusData(fieldName string, schema *Schema, index int) {
+	// For inline map schemas
+	keySchema := schema.Keys
+	valueSchema := schema.Values
+
+	goKeyType := "string"
+	if keySchema != nil {
+		goKeyType = g.schemaToGoType(keySchema)
+		if goKeyType == "[]byte" {
+			goKeyType = "string"
+		}
+	}
+	goValueType := "interface{}"
+	if valueSchema != nil {
+		goValueType = g.schemaToGoType(valueSchema)
+	}
+
+	g.writeLine(fmt.Sprintf("if pd.Constr.Fields[%d].Map == nil {", index))
+	g.indentInc()
+	g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: expected map, got %%s", plutusDataTypeString(pd.Constr.Fields[%d]))`, fieldName, index))
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("v.%s = make(map[%s]%s)", fieldName, goKeyType, goValueType))
+	g.writeLine(fmt.Sprintf("for _, entry := range pd.Constr.Fields[%d].Map {", index))
+	g.indentInc()
+
+	// Generate key deserialization based on schema
+	g.writeInlineMapKeyFromPlutusData(keySchema, fieldName)
+
+	// Generate value deserialization based on schema
+	g.writeInlineMapValueFromPlutusData(valueSchema, fieldName)
+
+	g.writeLine("v." + fieldName + "[mapKey] = mapVal")
+	g.indentDec()
+	g.writeLine("}")
+}
+
+func (g *Generator) writeInlineMapKeyFromPlutusData(keySchema *Schema, fieldName string) {
+	if keySchema == nil {
+		g.writeLine("mapKey := string(entry.Key.ByteString)")
+		return
+	}
+
+	switch {
+	case keySchema.IsRef():
+		refName := keySchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine("mapKey := entry.Key.Integer")
+		case "ByteArray":
+			g.writeLine("mapKey := string(entry.Key.ByteString)")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine("mapKey := string(entry.Key.ByteString)")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine("mapKey := entry.Key.Integer")
+			} else {
+				goKeyType := g.refToGoType(refName)
+				g.writeLine(fmt.Sprintf("var mapKey %s", goKeyType))
+				g.writeLine("if err := mapKey.FromPlutusData(entry.Key); err != nil {")
+				g.indentInc()
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: map key: %%w", err)`, fieldName))
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case keySchema.IsInteger():
+		g.writeLine("mapKey := entry.Key.Integer")
+	case keySchema.IsBytes():
+		g.writeLine("mapKey := string(entry.Key.ByteString)")
+	default:
+		g.writeLine("mapKey := string(entry.Key.ByteString)")
+	}
+}
+
+func (g *Generator) writeInlineMapValueFromPlutusData(valueSchema *Schema, fieldName string) {
+	if valueSchema == nil {
+		g.writeLine("mapVal := entry.Value")
+		return
+	}
+
+	switch {
+	case valueSchema.IsRef():
+		refName := valueSchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine("mapVal := entry.Value.Integer")
+		case "ByteArray":
+			g.writeLine("mapVal := entry.Value.ByteString")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine("mapVal := entry.Value.ByteString")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine("mapVal := entry.Value.Integer")
+			} else {
+				goValueType := g.refToGoType(refName)
+				g.writeLine(fmt.Sprintf("var mapVal %s", goValueType))
+				g.writeLine("if err := mapVal.FromPlutusData(entry.Value); err != nil {")
+				g.indentInc()
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case valueSchema.IsInteger():
+		g.writeLine("mapVal := entry.Value.Integer")
+	case valueSchema.IsBytes():
+		g.writeLine("mapVal := entry.Value.ByteString")
+	case valueSchema.IsMap():
+		// Nested map
+		goValueType := g.schemaToGoType(valueSchema)
+		g.writeLine(fmt.Sprintf("var mapVal %s", goValueType))
+		g.writeLine("// TODO: deserialize nested map")
+	default:
+		goValueType := g.schemaToGoType(valueSchema)
+		g.writeLine(fmt.Sprintf("var mapVal %s", goValueType))
+		g.writeLine("if err := mapVal.FromPlutusData(entry.Value); err != nil {")
+		g.indentInc()
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("field %s: map value: %%w", err)`, fieldName))
+		g.indentDec()
+		g.writeLine("}")
 	}
 }
 

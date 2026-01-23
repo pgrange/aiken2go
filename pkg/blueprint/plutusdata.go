@@ -148,20 +148,25 @@ func (p PlutusData) toCBORBytes() ([]byte, error) {
 
 	case p.Map != nil:
 		var buf bytes.Buffer
-		buf.WriteByte(0xbf) // indefinite-length map start
-		for _, entry := range p.Map {
-			keyBytes, err := entry.Key.toCBORBytes()
-			if err != nil {
-				return nil, err
+		// Empty maps use definite-length, non-empty use indefinite
+		if len(p.Map) == 0 {
+			buf.WriteByte(0xa0) // empty map (definite-length)
+		} else {
+			buf.WriteByte(0xbf) // indefinite-length map start
+			for _, entry := range p.Map {
+				keyBytes, err := entry.Key.toCBORBytes()
+				if err != nil {
+					return nil, err
+				}
+				buf.Write(keyBytes)
+				valBytes, err := entry.Value.toCBORBytes()
+				if err != nil {
+					return nil, err
+				}
+				buf.Write(valBytes)
 			}
-			buf.Write(keyBytes)
-			valBytes, err := entry.Value.toCBORBytes()
-			if err != nil {
-				return nil, err
-			}
-			buf.Write(valBytes)
+			buf.WriteByte(0xff) // break
 		}
-		buf.WriteByte(0xff) // break
 		return buf.Bytes(), nil
 
 	default:
