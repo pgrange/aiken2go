@@ -63,6 +63,9 @@ func (g *Generator) writeImports() {
 	g.writeLine(`"errors"`)
 	g.writeLine(`"fmt"`)
 	g.writeLine(`"math/big"`)
+	if g.hasMaps() {
+		g.writeLine(`"reflect"`)
+	}
 	g.writeLine("")
 	g.writeLine(`"github.com/fxamacker/cbor/v2"`)
 	g.indentDec()
@@ -70,6 +73,30 @@ func (g *Generator) writeImports() {
 	g.writeLine("")
 	g.writePlutusDataTypes()
 	g.writeHelpers()
+}
+
+func (g *Generator) hasMaps() bool {
+	for name := range g.bp.Definitions {
+		if strings.HasPrefix(name, "Pairs$") {
+			return true
+		}
+	}
+	// Also check for inline map schemas
+	for _, schema := range g.bp.Definitions {
+		if schema.IsMap() {
+			return true
+		}
+		if schema.IsEnum() {
+			for _, variant := range schema.AnyOf {
+				for _, field := range variant.Fields {
+					if field.IsMap() || (field.IsRef() && strings.HasPrefix(field.RefName(), "Pairs$")) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (g *Generator) writePlutusDataTypes() {
@@ -578,6 +605,9 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	g.writeLine("}")
 	g.writeLine("")
 
+	// Equals method
+	g.writeOptionEquals(name, schema)
+
 	return nil
 }
 
@@ -742,6 +772,90 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 	g.writeLine("}")
 }
 
+func (g *Generator) writeOptionEquals(name string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
+	g.indentInc()
+	g.writeLine("if v.IsSet != other.IsSet {")
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("if !v.IsSet {")
+	g.indentInc()
+	g.writeLine("return true // Both are None")
+	g.indentDec()
+	g.writeLine("}")
+
+	// Get the actual inner schema
+	var innerSchema *Schema
+	if len(schema.AnyOf) > 0 && len(schema.AnyOf[0].Fields) > 0 {
+		innerSchema = &schema.AnyOf[0].Fields[0]
+	}
+
+	if innerSchema != nil && innerSchema.IsRef() {
+		refName := innerSchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine("if v.Value == nil && other.Value == nil {")
+			g.indentInc()
+			g.writeLine("return true")
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine("if v.Value == nil || other.Value == nil {")
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine("return v.Value.Cmp(other.Value) == 0")
+		case "ByteArray":
+			g.writeLine("return bytes.Equal(v.Value, other.Value)")
+		case "Data":
+			g.writeLine("return v.Value.Equals(other.Value)")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine("return bytes.Equal(v.Value, other.Value)")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine("if v.Value == nil && other.Value == nil {")
+				g.indentInc()
+				g.writeLine("return true")
+				g.indentDec()
+				g.writeLine("}")
+				g.writeLine("if v.Value == nil || other.Value == nil {")
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+				g.writeLine("return v.Value.Cmp(other.Value) == 0")
+			} else if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+				typeName := g.normalizeTypeName(refName)
+				g.writeLine(fmt.Sprintf("return %sEquals(v.Value, other.Value)", typeName))
+			} else {
+				g.writeLine("return v.Value.Equals(other.Value)")
+			}
+		}
+	} else if innerSchema != nil && innerSchema.IsInteger() {
+		g.writeLine("if v.Value == nil && other.Value == nil {")
+		g.indentInc()
+		g.writeLine("return true")
+		g.indentDec()
+		g.writeLine("}")
+		g.writeLine("if v.Value == nil || other.Value == nil {")
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+		g.writeLine("return v.Value.Cmp(other.Value) == 0")
+	} else if innerSchema != nil && innerSchema.IsBytes() {
+		g.writeLine("return bytes.Equal(v.Value, other.Value)")
+	} else {
+		g.writeLine("return v.Value.Equals(other.Value)")
+	}
+
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+}
+
 func (g *Generator) writeBoolType(name string, _ *Schema) error {
 	// Bool is an enum with False (0) and True (1) constructors
 	g.writeLine(fmt.Sprintf("// %s represents the Aiken Bool type.", name))
@@ -818,7 +932,364 @@ func (g *Generator) writeStructType(name string, schema *Schema, constrIndex int
 	// Generate FromPlutusData method
 	g.writeStructFromPlutusData(name, schema, constrIndex)
 
+	// Generate Equals method
+	g.writeStructEquals(name, schema)
+
 	return nil
+}
+
+func (g *Generator) writeStructEquals(name string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
+	g.indentInc()
+
+	if len(schema.Fields) == 0 {
+		g.writeLine("return true")
+	} else {
+		for i, field := range schema.Fields {
+			fieldName := g.normalizeFieldName(field.Title, i)
+			g.writeFieldEquals(fieldName, &field)
+		}
+		g.writeLine("return true")
+	}
+
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+}
+
+func (g *Generator) writeFieldEquals(fieldName string, schema *Schema) {
+	switch {
+	case schema.IsRef():
+		refName := schema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+			g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case "ByteArray":
+			g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case "Bool":
+			g.writeLine(fmt.Sprintf("if v.%s != other.%s {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case "Data":
+			// Data type is PlutusData - use its Equals method
+			g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		default:
+			if strings.HasPrefix(refName, "List$") {
+				g.writeListFieldEquals(fieldName, refName)
+			} else if strings.HasPrefix(refName, "Pairs$") {
+				// Map type - use reflect.DeepEqual
+				g.writeLine(fmt.Sprintf("if !reflect.DeepEqual(v.%s, other.%s) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else if strings.HasPrefix(refName, "Option$") {
+				g.writeOptionFieldEquals(fieldName, refName)
+			} else if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+				g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else {
+				// Check if it's an enum type (interface)
+				if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+					typeName := g.normalizeTypeName(refName)
+					g.writeLine(fmt.Sprintf("if !%sEquals(v.%s, other.%s) {", typeName, fieldName, fieldName))
+					g.indentInc()
+					g.writeLine("return false")
+					g.indentDec()
+					g.writeLine("}")
+				} else {
+					// Struct type with Equals method
+					g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+					g.indentInc()
+					g.writeLine("return false")
+					g.indentDec()
+					g.writeLine("}")
+				}
+			}
+		}
+	case schema.IsInteger():
+		g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+		g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case schema.IsBytes():
+		g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case schema.IsList():
+		g.writeInlineListFieldEquals(fieldName, schema)
+	case schema.IsMap():
+		// Map type - use reflect.DeepEqual
+		g.writeLine(fmt.Sprintf("if !reflect.DeepEqual(v.%s, other.%s) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case schema.IsBoolean():
+		g.writeLine(fmt.Sprintf("if v.%s != other.%s {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case schema.IsOption():
+		g.writeInlineOptionFieldEquals(fieldName, schema)
+	default:
+		// Try struct equals
+		g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	}
+}
+
+func (g *Generator) writeListFieldEquals(fieldName string, refName string) {
+	inner := strings.TrimPrefix(refName, "List$")
+	inner = strings.ReplaceAll(inner, "~1", "/")
+
+	g.writeLine(fmt.Sprintf("if len(v.%s) != len(other.%s) {", fieldName, fieldName))
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("for i := range v.%s {", fieldName))
+	g.indentInc()
+
+	switch inner {
+	case "Int":
+		g.writeLine(fmt.Sprintf("if v.%s[i] == nil && other.%s[i] == nil {", fieldName, fieldName))
+		g.writeLine(fmt.Sprintf("} else if v.%s[i] == nil || other.%s[i] == nil || v.%s[i].Cmp(other.%s[i]) != 0 {", fieldName, fieldName, fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case "ByteArray":
+		g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s[i], other.%s[i]) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case "Bool":
+		g.writeLine(fmt.Sprintf("if v.%s[i] != other.%s[i] {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	default:
+		if g.isPrimitiveWrapper(inner, "bytes") {
+			g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s[i], other.%s[i]) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		} else if g.isPrimitiveWrapper(inner, "integer") {
+			g.writeLine(fmt.Sprintf("if v.%s[i] == nil && other.%s[i] == nil {", fieldName, fieldName))
+			g.writeLine(fmt.Sprintf("} else if v.%s[i] == nil || other.%s[i] == nil || v.%s[i].Cmp(other.%s[i]) != 0 {", fieldName, fieldName, fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		} else {
+			// Check if enum
+			if defSchema, ok := g.bp.Definitions[g.unescapeRef(inner)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+				typeName := g.normalizeTypeName(inner)
+				g.writeLine(fmt.Sprintf("if !%sEquals(v.%s[i], other.%s[i]) {", typeName, fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else {
+				g.writeLine(fmt.Sprintf("if !v.%s[i].Equals(other.%s[i]) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	}
+
+	g.indentDec()
+	g.writeLine("}")
+}
+
+func (g *Generator) writeOptionFieldEquals(fieldName string, refName string) {
+	g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+}
+
+func (g *Generator) writeInlineListFieldEquals(fieldName string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("if len(v.%s) != len(other.%s) {", fieldName, fieldName))
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("for i := range v.%s {", fieldName))
+	g.indentInc()
+
+	if len(schema.Items) > 0 && schema.Items.Single() != nil {
+		itemSchema := schema.Items.Single()
+		switch {
+		case itemSchema.IsRef():
+			refName := itemSchema.RefName()
+			switch refName {
+			case "Int":
+				g.writeLine(fmt.Sprintf("if v.%s[i] == nil && other.%s[i] == nil {", fieldName, fieldName))
+				g.writeLine(fmt.Sprintf("} else if v.%s[i] == nil || other.%s[i] == nil || v.%s[i].Cmp(other.%s[i]) != 0 {", fieldName, fieldName, fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			case "ByteArray":
+				g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s[i], other.%s[i]) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			default:
+				g.writeLine(fmt.Sprintf("if !v.%s[i].Equals(other.%s[i]) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			}
+		case itemSchema.IsInteger():
+			g.writeLine(fmt.Sprintf("if v.%s[i] == nil && other.%s[i] == nil {", fieldName, fieldName))
+			g.writeLine(fmt.Sprintf("} else if v.%s[i] == nil || other.%s[i] == nil || v.%s[i].Cmp(other.%s[i]) != 0 {", fieldName, fieldName, fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case itemSchema.IsBytes():
+			g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s[i], other.%s[i]) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		default:
+			g.writeLine(fmt.Sprintf("if !v.%s[i].Equals(other.%s[i]) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		}
+	} else {
+		g.writeLine(fmt.Sprintf("if !v.%s[i].Equals(other.%s[i]) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	}
+
+	g.indentDec()
+	g.writeLine("}")
+}
+
+func (g *Generator) writeInlineOptionFieldEquals(fieldName string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("if v.%s.IsSet != other.%s.IsSet {", fieldName, fieldName))
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine(fmt.Sprintf("if v.%s.IsSet {", fieldName))
+	g.indentInc()
+
+	inner := schema.OptionInnerType()
+	if inner != nil {
+		switch {
+		case inner.IsRef():
+			refName := inner.RefName()
+			switch refName {
+			case "Int":
+				g.writeLine(fmt.Sprintf("if v.%s.Value == nil && other.%s.Value == nil {", fieldName, fieldName))
+				g.writeLine(fmt.Sprintf("} else if v.%s.Value == nil || other.%s.Value == nil || v.%s.Value.Cmp(other.%s.Value) != 0 {", fieldName, fieldName, fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			case "ByteArray":
+				g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s.Value, other.%s.Value) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			default:
+				if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+					typeName := g.normalizeTypeName(refName)
+					g.writeLine(fmt.Sprintf("if !%sEquals(v.%s.Value, other.%s.Value) {", typeName, fieldName, fieldName))
+					g.indentInc()
+					g.writeLine("return false")
+					g.indentDec()
+					g.writeLine("}")
+				} else {
+					g.writeLine(fmt.Sprintf("if !v.%s.Value.Equals(other.%s.Value) {", fieldName, fieldName))
+					g.indentInc()
+					g.writeLine("return false")
+					g.indentDec()
+					g.writeLine("}")
+				}
+			}
+		case inner.IsInteger():
+			g.writeLine(fmt.Sprintf("if v.%s.Value == nil && other.%s.Value == nil {", fieldName, fieldName))
+			g.writeLine(fmt.Sprintf("} else if v.%s.Value == nil || other.%s.Value == nil || v.%s.Value.Cmp(other.%s.Value) != 0 {", fieldName, fieldName, fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case inner.IsBytes():
+			g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s.Value, other.%s.Value) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		default:
+			g.writeLine(fmt.Sprintf("if !v.%s.Value.Equals(other.%s.Value) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		}
+	} else {
+		g.writeLine(fmt.Sprintf("if !v.%s.Value.Equals(other.%s.Value) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	}
+
+	g.indentDec()
+	g.writeLine("}")
 }
 
 func (g *Generator) writeStructToPlutusData(name string, schema *Schema, constrIndex int) {
@@ -1533,6 +2004,9 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 	// Write FromPlutusData function for the enum
 	g.writeEnumFromPlutusData(name, schema)
 
+	// Write Equals function for the enum
+	g.writeEnumEquals(name, schema)
+
 	// Write variant structs
 	for i, variant := range schema.AnyOf {
 		variantName := name + g.toGoIdentifier(variant.Title)
@@ -1575,6 +2049,14 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 			g.writeLine("}")
 			g.writeLine("")
 
+			// Equals - empty struct always equals another of same type
+			g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", variantName, variantName))
+			g.indentInc()
+			g.writeLine("return true")
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine("")
+
 		} else if len(variant.Fields) == 1 && variant.Fields[0].Title == "" {
 			// Single unnamed field - wrapper type
 			fieldType := g.schemaToGoType(&variant.Fields[0])
@@ -1591,6 +2073,9 @@ func (g *Generator) writeEnumType(name string, schema *Schema) error {
 			// Write ToPlutusData/FromPlutusData for wrapper
 			g.writeWrapperToPlutusData(variantName, &variant.Fields[0], constrIndex)
 			g.writeWrapperFromPlutusData(variantName, &variant.Fields[0], constrIndex)
+
+			// Write Equals for wrapper
+			g.writeWrapperEquals(variantName, &variant.Fields[0])
 		} else {
 			// Struct with named fields
 			g.writeLine(fmt.Sprintf("// %s is a variant of %s.", variantName, name))
@@ -1640,6 +2125,34 @@ func (g *Generator) writeEnumFromPlutusData(name string, schema *Schema) {
 	g.writeLine(fmt.Sprintf(`return nil, fmt.Errorf("unknown constructor index for %s: got %%d", pd.Constr.Index)`, name))
 	g.indentDec()
 	g.writeLine("}")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+}
+
+func (g *Generator) writeEnumEquals(name string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("// %sEquals compares two %s values for equality.", name, name))
+	g.writeLine(fmt.Sprintf("func %sEquals(a, b %s) bool {", name, name))
+	g.indentInc()
+	g.writeLine("if a == nil && b == nil {")
+	g.indentInc()
+	g.writeLine("return true")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("if a == nil || b == nil {")
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("// Compare by serializing to PlutusData")
+	g.writeLine("aPd, aErr := a.ToPlutusData()")
+	g.writeLine("bPd, bErr := b.ToPlutusData()")
+	g.writeLine("if aErr != nil || bErr != nil {")
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("return aPd.Equals(bPd)")
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
@@ -1700,7 +2213,87 @@ func (g *Generator) writeTupleType(name string, schema *Schema) error {
 	g.writeLine("}")
 	g.writeLine("")
 
+	// Equals method
+	g.writeTupleEquals(name, schema)
+
 	return nil
+}
+
+func (g *Generator) writeTupleEquals(name string, schema *Schema) {
+	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
+	g.indentInc()
+
+	for i, item := range schema.Items {
+		fieldName := fmt.Sprintf("Field%d", i)
+		g.writeTupleFieldEquals(fieldName, item)
+	}
+
+	g.writeLine("return true")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+}
+
+func (g *Generator) writeTupleFieldEquals(fieldName string, item *Schema) {
+	switch {
+	case item.IsRef():
+		refName := item.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+			g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case "ByteArray":
+			g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+				g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else {
+				g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case item.IsInteger():
+		g.writeLine(fmt.Sprintf("if v.%s == nil && other.%s == nil {", fieldName, fieldName))
+		g.writeLine(fmt.Sprintf("} else if v.%s == nil || other.%s == nil || v.%s.Cmp(other.%s) != 0 {", fieldName, fieldName, fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case item.IsBytes():
+		g.writeLine(fmt.Sprintf("if !bytes.Equal(v.%s, other.%s) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	default:
+		g.writeLine(fmt.Sprintf("if !v.%s.Equals(other.%s) {", fieldName, fieldName))
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	}
 }
 
 func (g *Generator) writeListTypeAlias(name string, schema *Schema) error {
@@ -1749,7 +2342,96 @@ func (g *Generator) writeListTypeAlias(name string, schema *Schema) error {
 	g.writeLine("}")
 	g.writeLine("")
 
+	// Equals method
+	g.writeListAliasEquals(name, innerSchema)
+
 	return nil
+}
+
+func (g *Generator) writeListAliasEquals(name string, innerSchema *Schema) {
+	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
+	g.indentInc()
+	g.writeLine("if len(v) != len(other) {")
+	g.indentInc()
+	g.writeLine("return false")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("for i := range v {")
+	g.indentInc()
+
+	switch {
+	case innerSchema.IsRef():
+		refName := innerSchema.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine("if v[i] == nil && other[i] == nil {")
+			g.writeLine("} else if v[i] == nil || other[i] == nil || v[i].Cmp(other[i]) != 0 {")
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		case "ByteArray":
+			g.writeLine("if !bytes.Equal(v[i], other[i]) {")
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine("if !bytes.Equal(v[i], other[i]) {")
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine("if v[i] == nil && other[i] == nil {")
+				g.writeLine("} else if v[i] == nil || other[i] == nil || v[i].Cmp(other[i]) != 0 {")
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+				typeName := g.normalizeTypeName(refName)
+				g.writeLine(fmt.Sprintf("if !%sEquals(v[i], other[i]) {", typeName))
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			} else {
+				g.writeLine("if !v[i].Equals(other[i]) {")
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+			}
+		}
+	case innerSchema.IsInteger():
+		g.writeLine("if v[i] == nil && other[i] == nil {")
+		g.writeLine("} else if v[i] == nil || other[i] == nil || v[i].Cmp(other[i]) != 0 {")
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	case innerSchema.IsBytes():
+		g.writeLine("if !bytes.Equal(v[i], other[i]) {")
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	default:
+		g.writeLine("if !v[i].Equals(other[i]) {")
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+	}
+
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("return true")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
 }
 
 func (g *Generator) writeListAliasItemToPlutusData(innerSchema *Schema) {
@@ -2124,6 +2806,77 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 	}
 
 	g.writeLine("return nil")
+	g.indentDec()
+	g.writeLine("}")
+	g.writeLine("")
+}
+
+func (g *Generator) writeWrapperEquals(name string, field *Schema) {
+	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
+	g.indentInc()
+
+	switch {
+	case field.IsRef():
+		refName := field.RefName()
+		switch refName {
+		case "Int":
+			g.writeLine("if v.Value == nil && other.Value == nil {")
+			g.indentInc()
+			g.writeLine("return true")
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine("if v.Value == nil || other.Value == nil {")
+			g.indentInc()
+			g.writeLine("return false")
+			g.indentDec()
+			g.writeLine("}")
+			g.writeLine("return v.Value.Cmp(other.Value) == 0")
+		case "ByteArray":
+			g.writeLine("return bytes.Equal(v.Value, other.Value)")
+		case "Bool":
+			g.writeLine("return v.Value == other.Value")
+		case "Data":
+			g.writeLine("return v.Value.Equals(other.Value)")
+		default:
+			if g.isPrimitiveWrapper(refName, "bytes") {
+				g.writeLine("return bytes.Equal(v.Value, other.Value)")
+			} else if g.isPrimitiveWrapper(refName, "integer") {
+				g.writeLine("if v.Value == nil && other.Value == nil {")
+				g.indentInc()
+				g.writeLine("return true")
+				g.indentDec()
+				g.writeLine("}")
+				g.writeLine("if v.Value == nil || other.Value == nil {")
+				g.indentInc()
+				g.writeLine("return false")
+				g.indentDec()
+				g.writeLine("}")
+				g.writeLine("return v.Value.Cmp(other.Value) == 0")
+			} else if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+				typeName := g.normalizeTypeName(refName)
+				g.writeLine(fmt.Sprintf("return %sEquals(v.Value, other.Value)", typeName))
+			} else {
+				g.writeLine("return v.Value.Equals(other.Value)")
+			}
+		}
+	case field.IsInteger():
+		g.writeLine("if v.Value == nil && other.Value == nil {")
+		g.indentInc()
+		g.writeLine("return true")
+		g.indentDec()
+		g.writeLine("}")
+		g.writeLine("if v.Value == nil || other.Value == nil {")
+		g.indentInc()
+		g.writeLine("return false")
+		g.indentDec()
+		g.writeLine("}")
+		g.writeLine("return v.Value.Cmp(other.Value) == 0")
+	case field.IsBytes():
+		g.writeLine("return bytes.Equal(v.Value, other.Value)")
+	default:
+		g.writeLine("return v.Value.Equals(other.Value)")
+	}
+
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
