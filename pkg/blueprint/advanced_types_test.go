@@ -294,10 +294,10 @@ func main() {
 		failed = true
 	}
 
-	// Test Address with Option<Credential> - None case (nil)
+	// Test Address with Option<Credential> - None case
 	addr := types.CustomAddress{
 		Payment: types.CustomCredentialVerificationKey{Value: []byte{0xaa, 0xbb, 0xcc, 0xdd, 0x11, 0x22}},
-		Stake:   nil, // None
+		Stake:   types.OptionCustomCredential{IsSet: false}, // None
 	}
 	if err := testRoundTrip("Address", addr, func(pd types.PlutusData) (types.CustomAddress, error) {
 		var v types.CustomAddress
@@ -310,7 +310,7 @@ func main() {
 	// Test Address with Some(Credential)
 	addrWithStake := types.CustomAddress{
 		Payment: types.CustomCredentialScript{Value: []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}},
-		Stake:   types.CustomCredentialVerificationKey{Value: []byte{0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc}}, // Some value
+		Stake:   types.OptionCustomCredential{Value: types.CustomCredentialVerificationKey{Value: []byte{0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc}}, IsSet: true},
 	}
 	if err := testRoundTrip("Address(with stake)", addrWithStake, func(pd types.PlutusData) (types.CustomAddress, error) {
 		var v types.CustomAddress
