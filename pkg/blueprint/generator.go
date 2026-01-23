@@ -624,10 +624,21 @@ func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schem
 	}
 
 	// Complex inner type
+	// Check if it's an enum (interface) that could be nil
+	if innerSchema != nil && innerSchema.IsRef() {
+		refName := innerSchema.RefName()
+		if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+			g.writeLine("if v.Value == nil {")
+			g.indentInc()
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("Option.Value: value is nil (expected %s)")`, g.normalizeTypeName(refName)))
+			g.indentDec()
+			g.writeLine("}")
+		}
+	}
 	g.writeLine("innerPd, err := v.Value.ToPlutusData()")
 	g.writeLine("if err != nil {")
 	g.indentInc()
-	g.writeLine("return PlutusData{}, err")
+	g.writeLine(`return PlutusData{}, fmt.Errorf("Option.Value: %w", err)`)
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("return NewConstrPlutusData(0, innerPd), nil")
@@ -871,10 +882,18 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 				g.writeLine(fmt.Sprintf("fields[%d] = NewIntPlutusData(v.%s)", index, fieldName))
 			} else {
 				// Custom type with ToPlutusData
+				// Check if it's an enum type (interface) that could be nil
+				if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+					g.writeLine(fmt.Sprintf("if v.%s == nil {", fieldName))
+					g.indentInc()
+					g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: value is nil (expected %s)")`, fieldName, g.normalizeTypeName(refName)))
+					g.indentDec()
+					g.writeLine("}")
+				}
 				g.writeLine(fmt.Sprintf("field%d, err := v.%s.ToPlutusData()", index, fieldName))
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return PlutusData{}, err")
+				g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: %%w", err)`, fieldName))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("fields[%d] = field%d", index, index))
@@ -895,7 +914,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 			g.writeLine("itemPd, err := item.ToPlutusData()")
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return PlutusData{}, err")
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s[%%d]: %%w", i, err)`, fieldName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("list%d[i] = itemPd", index))
@@ -925,10 +944,21 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 			// Simple inner type
 			g.writeOptionSomeValue(fieldName, inner, index)
 		} else {
+			// Check if inner type is an enum (interface) that could be nil
+			if inner != nil && inner.IsRef() {
+				refName := inner.RefName()
+				if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+					g.writeLine(fmt.Sprintf("if v.%s.Value == nil {", fieldName))
+					g.indentInc()
+					g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s.Value: value is nil (expected %s)")`, fieldName, g.normalizeTypeName(refName)))
+					g.indentDec()
+					g.writeLine("}")
+				}
+			}
 			g.writeLine(fmt.Sprintf("innerPd, err := v.%s.Value.ToPlutusData()", fieldName))
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return PlutusData{}, err")
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s.Value: %%w", err)`, fieldName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, innerPd)", index))
@@ -944,7 +974,7 @@ func (g *Generator) writeFieldToPlutusData(fieldName string, schema *Schema, ind
 		g.writeLine(fmt.Sprintf("field%d, err := v.%s.ToPlutusData()", index, fieldName))
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return PlutusData{}, err")
+		g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: %%w", err)`, fieldName))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("fields[%d] = field%d", index, index))
@@ -984,7 +1014,7 @@ func (g *Generator) writeListFieldToPlutusData(fieldName, refName string, index 
 			g.writeLine("itemPd, err := item.ToPlutusData()")
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return PlutusData{}, err")
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s[%%d]: %%w", i, err)`, fieldName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("list%d[i] = itemPd", index))
@@ -1024,7 +1054,7 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 				g.writeLine("itemPd, err := item.ToPlutusData()")
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return PlutusData{}, err")
+				g.writeLine(`return PlutusData{}, fmt.Errorf("list item[%d]: %w", i, err)`)
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("list%d[i] = itemPd", listIndex))
@@ -1038,7 +1068,7 @@ func (g *Generator) writeListItemToPlutusData(itemSchema *Schema, listIndex int)
 		g.writeLine("itemPd, err := item.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return PlutusData{}, err")
+		g.writeLine(`return PlutusData{}, fmt.Errorf("list item[%d]: %w", i, err)`)
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("list%d[i] = itemPd", listIndex))
@@ -1084,10 +1114,18 @@ func (g *Generator) writeOptionRefToPlutusData(fieldName string, refName string,
 			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, NewIntPlutusData(v.%s.Value))", index, fieldName))
 		} else {
 			// Complex inner type - call ToPlutusData
+			// Check if it's an enum (interface) that could be nil
+			if defSchema, ok := g.bp.Definitions[g.unescapeRef(innerRef)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
+				g.writeLine(fmt.Sprintf("if v.%s.Value == nil {", fieldName))
+				g.indentInc()
+				g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s.Value: value is nil (expected %s)")`, fieldName, g.normalizeTypeName(innerRef)))
+				g.indentDec()
+				g.writeLine("}")
+			}
 			g.writeLine(fmt.Sprintf("innerPd, err := v.%s.Value.ToPlutusData()", fieldName))
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return PlutusData{}, err")
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s.Value: %%w", err)`, fieldName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine(fmt.Sprintf("fields[%d] = NewConstrPlutusData(0, innerPd)", index))
@@ -1732,7 +1770,7 @@ func (g *Generator) writeListAliasItemToPlutusData(innerSchema *Schema) {
 				g.writeLine("pd, err := item.ToPlutusData()")
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return PlutusData{}, err")
+				g.writeLine(`return PlutusData{}, fmt.Errorf("item[%d]: %w", i, err)`)
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("items[i] = pd")
@@ -1746,7 +1784,7 @@ func (g *Generator) writeListAliasItemToPlutusData(innerSchema *Schema) {
 		g.writeLine("pd, err := item.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return PlutusData{}, err")
+		g.writeLine(`return PlutusData{}, fmt.Errorf("item[%d]: %w", i, err)`)
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine("items[i] = pd")
@@ -1854,7 +1892,7 @@ func (g *Generator) writeTupleFieldToPlutusData(fieldName string, item *Schema, 
 				g.writeLine(fmt.Sprintf("item%d, err := v.%s.ToPlutusData()", index, fieldName))
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return PlutusData{}, err")
+				g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: %%w", err)`, fieldName))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("items[%d] = item%d", index, index))
@@ -1868,7 +1906,7 @@ func (g *Generator) writeTupleFieldToPlutusData(fieldName string, item *Schema, 
 		g.writeLine(fmt.Sprintf("item%d, err := v.%s.ToPlutusData()", index, fieldName))
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return PlutusData{}, err")
+		g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("field %s: %%w", err)`, fieldName))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("items[%d] = item%d", index, index))
@@ -1964,7 +2002,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 				g.writeLine("inner, err := v.Value.ToPlutusData()")
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return PlutusData{}, err")
+				g.writeLine(`return PlutusData{}, fmt.Errorf("Value: %w", err)`)
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
@@ -1978,7 +2016,7 @@ func (g *Generator) writeWrapperToPlutusData(name string, field *Schema, constrI
 		g.writeLine("inner, err := v.Value.ToPlutusData()")
 		g.writeLine("if err != nil {")
 		g.indentInc()
-		g.writeLine("return PlutusData{}, err")
+		g.writeLine(`return PlutusData{}, fmt.Errorf("Value: %w", err)`)
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine(fmt.Sprintf("return NewConstrPlutusData(%d, inner), nil", constrIndex))
