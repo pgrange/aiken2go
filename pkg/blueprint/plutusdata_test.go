@@ -1,9 +1,24 @@
 package blueprint
 
 import (
+	"encoding/hex"
 	"math/big"
 	"testing"
 )
+
+// fromHex is a test helper that decodes hex and unmarshals PlutusData
+func fromHex(t *testing.T, h string) PlutusData {
+	t.Helper()
+	data, err := hex.DecodeString(h)
+	if err != nil {
+		t.Fatalf("invalid hex: %v", err)
+	}
+	var pd PlutusData
+	if err := pd.UnmarshalCBOR(data); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	return pd
+}
 
 func TestPlutusData_Integer(t *testing.T) {
 	// Test positive integer
@@ -138,10 +153,7 @@ func TestPlutusData_Bool(t *testing.T) {
 
 func TestPlutusData_FromHex(t *testing.T) {
 	// Test decoding from known hex
-	pd, err := FromHex("d87980") // Unit/False
-	if err != nil {
-		t.Fatalf("failed to decode hex: %v", err)
-	}
+	pd := fromHex(t, "d87980") // Unit/False
 
 	if pd.Constr == nil || pd.Constr.Index != 0 {
 		t.Error("expected constructor 0")
@@ -247,10 +259,7 @@ func TestPlutusData_IndefiniteLengthArrays(t *testing.T) {
 		// We decode it and re-encode to verify byte-for-byte match
 		aikenHex := "d8799f9fd8799fd8799fd8799fd8799f450102000403ffd8799fd8799fd8799f450102000403ffffffffd87980ff01d8799f4ed8799f48736f6d65486173680cffffffffff"
 
-		pd, err := FromHex(aikenHex)
-		if err != nil {
-			t.Fatalf("failed to decode Aiken CBOR: %v", err)
-		}
+		pd := fromHex(t, aikenHex)
 
 		reencoded, err := pd.ToHex()
 		if err != nil {
