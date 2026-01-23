@@ -553,7 +553,7 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	g.indentDec()
 	g.writeLine("}")
 	// Generate inner serialization based on type
-	g.writeOptionInnerToPlutusData(innerType, schema)
+	g.writeOptionInnerToPlutusData(name, innerType, schema)
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("")
@@ -584,7 +584,7 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	g.writeLine("}")
 	g.writeLine("v.IsSet = true")
 	// Generate inner deserialization
-	g.writeOptionInnerFromPlutusData(innerType, schema)
+	g.writeOptionInnerFromPlutusData(name, innerType, schema)
 	g.writeLine("return nil")
 	g.indentDec()
 	g.writeLine("}")
@@ -611,7 +611,7 @@ func (g *Generator) writeOptionType(name string, schema *Schema) error {
 	return nil
 }
 
-func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schema) {
+func (g *Generator) writeOptionInnerToPlutusData(optionName, innerType string, schema *Schema) {
 	// Get the actual inner schema
 	var innerSchema *Schema
 	if len(schema.AnyOf) > 0 && len(schema.AnyOf[0].Fields) > 0 {
@@ -660,7 +660,7 @@ func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schem
 		if defSchema, ok := g.bp.Definitions[g.unescapeRef(refName)]; ok && defSchema.IsEnum() && !defSchema.IsSingleConstructor() {
 			g.writeLine("if v.Value == nil {")
 			g.indentInc()
-			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("Option.Value: value is nil (expected %s)")`, g.normalizeTypeName(refName)))
+			g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("%s.Value: value is nil (expected %s)")`, optionName, g.normalizeTypeName(refName)))
 			g.indentDec()
 			g.writeLine("}")
 		}
@@ -668,13 +668,13 @@ func (g *Generator) writeOptionInnerToPlutusData(innerType string, schema *Schem
 	g.writeLine("innerPd, err := v.Value.ToPlutusData()")
 	g.writeLine("if err != nil {")
 	g.indentInc()
-	g.writeLine(`return PlutusData{}, fmt.Errorf("Option.Value: %w", err)`)
+	g.writeLine(fmt.Sprintf(`return PlutusData{}, fmt.Errorf("%s.Value: %%w", err)`, optionName))
 	g.indentDec()
 	g.writeLine("}")
 	g.writeLine("return NewConstrPlutusData(0, innerPd), nil")
 }
 
-func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Schema) {
+func (g *Generator) writeOptionInnerFromPlutusData(optionName, innerType string, schema *Schema) {
 	// Get the actual inner schema
 	var innerSchema *Schema
 	if len(schema.AnyOf) > 0 && len(schema.AnyOf[0].Fields) > 0 {
@@ -687,7 +687,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 		case "Int":
 			g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 			g.indentInc()
-			g.writeLine(`return fmt.Errorf("expected integer for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
@@ -695,7 +695,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 		case "ByteArray":
 			g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 			g.indentInc()
-			g.writeLine(`return fmt.Errorf("expected bytes for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
@@ -708,7 +708,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 			if g.isPrimitiveWrapper(refName, "bytes") {
 				g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 				g.indentInc()
-				g.writeLine(`return fmt.Errorf("expected bytes for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
@@ -717,7 +717,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 			if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 				g.indentInc()
-				g.writeLine(`return fmt.Errorf("expected integer for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
@@ -729,7 +729,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 	if innerSchema != nil && innerSchema.IsInteger() {
 		g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 		g.indentInc()
-		g.writeLine(`return fmt.Errorf("expected integer for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
@@ -739,7 +739,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 	if innerSchema != nil && innerSchema.IsBytes() {
 		g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 		g.indentInc()
-		g.writeLine(`return fmt.Errorf("expected bytes for Option Some value, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes for Some value, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, optionName))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
@@ -756,7 +756,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 			g.writeLine(fmt.Sprintf("innerVal, err := %sFromPlutusData(pd.Constr.Fields[0])", typeName))
 			g.writeLine("if err != nil {")
 			g.indentInc()
-			g.writeLine("return err")
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: %%w", err)`, optionName))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("v.Value = innerVal")
@@ -767,7 +767,7 @@ func (g *Generator) writeOptionInnerFromPlutusData(innerType string, schema *Sch
 	// Non-enum complex type
 	g.writeLine("if err := v.Value.FromPlutusData(pd.Constr.Fields[0]); err != nil {")
 	g.indentInc()
-	g.writeLine("return err")
+	g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: %%w", err)`, optionName))
 	g.indentDec()
 	g.writeLine("}")
 }
@@ -2736,14 +2736,14 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 		case "Int":
 			g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 			g.indentInc()
-			g.writeLine(`return fmt.Errorf("expected integer, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
 		case "ByteArray":
 			g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 			g.indentInc()
-			g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+			g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 			g.indentDec()
 			g.writeLine("}")
 			g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
@@ -2754,14 +2754,14 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 			if g.isPrimitiveWrapper(refName, "bytes") {
 				g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 				g.indentInc()
-				g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
 			} else if g.isPrimitiveWrapper(refName, "integer") {
 				g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 				g.indentInc()
-				g.writeLine(`return fmt.Errorf("expected integer, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
@@ -2771,14 +2771,14 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 				g.writeLine(fmt.Sprintf("innerVal, err := %sFromPlutusData(pd.Constr.Fields[0])", typeName))
 				g.writeLine("if err != nil {")
 				g.indentInc()
-				g.writeLine("return err")
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: %%w", err)`, name))
 				g.indentDec()
 				g.writeLine("}")
 				g.writeLine("v.Value = innerVal")
 			} else {
 				g.writeLine("if err := v.Value.FromPlutusData(pd.Constr.Fields[0]); err != nil {")
 				g.indentInc()
-				g.writeLine("return err")
+				g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: %%w", err)`, name))
 				g.indentDec()
 				g.writeLine("}")
 			}
@@ -2786,21 +2786,21 @@ func (g *Generator) writeWrapperFromPlutusData(name string, field *Schema, const
 	case field.IsInteger():
 		g.writeLine("if pd.Constr.Fields[0].Integer == nil {")
 		g.indentInc()
-		g.writeLine(`return fmt.Errorf("expected integer, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected integer, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine("v.Value = pd.Constr.Fields[0].Integer")
 	case field.IsBytes():
 		g.writeLine("if pd.Constr.Fields[0].ByteString == nil {")
 		g.indentInc()
-		g.writeLine(`return fmt.Errorf("expected bytes, got %s", plutusDataTypeString(pd.Constr.Fields[0]))`)
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: expected bytes, got %%s", plutusDataTypeString(pd.Constr.Fields[0]))`, name))
 		g.indentDec()
 		g.writeLine("}")
 		g.writeLine("v.Value = pd.Constr.Fields[0].ByteString")
 	default:
 		g.writeLine("if err := v.Value.FromPlutusData(pd.Constr.Fields[0]); err != nil {")
 		g.indentInc()
-		g.writeLine("return err")
+		g.writeLine(fmt.Sprintf(`return fmt.Errorf("%s: %%w", err)`, name))
 		g.indentDec()
 		g.writeLine("}")
 	}
