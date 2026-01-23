@@ -59,18 +59,18 @@ func TestAdvancedTypes(t *testing.T) {
 		}
 	})
 
-	// Test 4: Tuple types should be generated as structs with Field0, Field1, etc.
+	// Test 4: Tuple types should be generated as structs with named fields from type refs.
 	t.Run("TupleTypes", func(t *testing.T) {
 		// Asset tuple type (now CustomAsset with full path)
 		if !strings.Contains(code, "type CustomAsset struct") {
 			t.Error("Expected CustomAsset tuple type to be generated as struct")
 		}
-		// Check for tuple fields
-		if !strings.Contains(code, "Field0 []byte") {
-			t.Error("Expected Field0 in tuple struct")
+		// Check for tuple fields - now named after their types
+		if !strings.Contains(code, "PolicyId []byte") {
+			t.Error("Expected PolicyId field in tuple struct")
 		}
-		if !strings.Contains(code, "Field1 []byte") {
-			t.Error("Expected Field1 in tuple struct")
+		if !strings.Contains(code, "AssetName []byte") {
+			t.Error("Expected AssetName field in tuple struct")
 		}
 		// Tuple should use list serialization
 		if !strings.Contains(code, "NewListPlutusData(items...)") {
@@ -270,8 +270,8 @@ func main() {
 
 	// Test Asset tuple type
 	asset := types.CustomAsset{
-		Field0: []byte{0xab, 0xcd, 0xef, 0x12, 0x34, 0x56}, // policy id
-		Field1: []byte("Token"),
+		PolicyId:  []byte{0xab, 0xcd, 0xef, 0x12, 0x34, 0x56}, // policy id
+		AssetName: []byte("Token"),
 	}
 	if err := testRoundTrip("Asset", asset, func(pd types.PlutusData) (types.CustomAsset, error) {
 		var v types.CustomAsset
@@ -283,8 +283,8 @@ func main() {
 
 	// Test TupleIntBytearray
 	tuple := types.TupleIntBytearray{
-		Field0: big.NewInt(42),
-		Field1: []byte("Hello"),
+		Int:       big.NewInt(42),
+		ByteArray: []byte("Hello"),
 	}
 	if err := testRoundTrip("TupleIntBytearray", tuple, func(pd types.PlutusData) (types.TupleIntBytearray, error) {
 		var v types.TupleIntBytearray

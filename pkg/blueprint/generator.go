@@ -2662,14 +2662,61 @@ func (g *Generator) writeEnumEquals(name string, schema *Schema) {
 	g.writeLine("")
 }
 
+// getTupleFieldNames extracts field names from tuple items.
+// If an item is a reference, it uses the type name from the ref (e.g., PolicyId, AssetName).
+// Otherwise, it falls back to Field0, Field1, etc.
+// If there are duplicate names, it appends a number to make them unique.
+func (g *Generator) getTupleFieldNames(items []*Schema) []string {
+	names := make([]string, len(items))
+	usedNames := make(map[string]int)
+
+	for i, item := range items {
+		var fieldName string
+		if item.IsRef() {
+			// Extract type name from ref (e.g., "#/definitions/cardano~1assets~1PolicyId" -> "PolicyId")
+			refName := item.RefName()
+			// Get the last part after any slashes or tildes
+			parts := strings.Split(refName, "/")
+			fieldName = parts[len(parts)-1]
+			// Also handle tilde-encoded slashes
+			if strings.Contains(fieldName, "~1") {
+				subParts := strings.Split(fieldName, "~1")
+				fieldName = subParts[len(subParts)-1]
+			}
+			// Capitalize first letter
+			if len(fieldName) > 0 {
+				fieldName = strings.ToUpper(fieldName[:1]) + fieldName[1:]
+			}
+		}
+
+		// Fallback to Field0, Field1, etc. if no name or empty
+		if fieldName == "" {
+			fieldName = fmt.Sprintf("Field%d", i)
+		}
+
+		// Handle duplicates by appending a number
+		if count, exists := usedNames[fieldName]; exists {
+			usedNames[fieldName] = count + 1
+			fieldName = fmt.Sprintf("%s%d", fieldName, count+1)
+		} else {
+			usedNames[fieldName] = 1
+		}
+
+		names[i] = fieldName
+	}
+
+	return names
+}
+
 func (g *Generator) writeTupleType(name string, schema *Schema) error {
 	g.writeLine(fmt.Sprintf("// %s represents a tuple type.", name))
 	g.writeLine(fmt.Sprintf("type %s struct {", name))
 	g.indentInc()
 
-	// Generate fields
+	// Generate fields - use type names from refs when available
+	fieldNames := g.getTupleFieldNames(schema.Items)
 	for i, item := range schema.Items {
-		fieldName := fmt.Sprintf("Field%d", i)
+		fieldName := fieldNames[i]
 		goType := g.schemaToGoType(item)
 		g.writeLine(fmt.Sprintf("%s %s", fieldName, goType))
 	}
@@ -2684,7 +2731,7 @@ func (g *Generator) writeTupleType(name string, schema *Schema) error {
 	g.writeLine(fmt.Sprintf("items := make([]PlutusData, %d)", len(schema.Items)))
 
 	for i, item := range schema.Items {
-		fieldName := fmt.Sprintf("Field%d", i)
+		fieldName := fieldNames[i]
 		g.writeTupleFieldToPlutusData(fieldName, item, i)
 	}
 
@@ -2708,7 +2755,7 @@ func (g *Generator) writeTupleType(name string, schema *Schema) error {
 	g.writeLine("}")
 
 	for i, item := range schema.Items {
-		fieldName := fmt.Sprintf("Field%d", i)
+		fieldName := fieldNames[i]
 		g.writeTupleFieldFromPlutusData(fieldName, item, i)
 	}
 
@@ -2718,17 +2765,17 @@ func (g *Generator) writeTupleType(name string, schema *Schema) error {
 	g.writeLine("")
 
 	// Equals method
-	g.writeTupleEquals(name, schema)
+	g.writeTupleEquals(name, schema, fieldNames)
 
 	return nil
 }
 
-func (g *Generator) writeTupleEquals(name string, schema *Schema) {
+func (g *Generator) writeTupleEquals(name string, schema *Schema, fieldNames []string) {
 	g.writeLine(fmt.Sprintf("func (v %s) Equals(other %s) bool {", name, name))
 	g.indentInc()
 
 	for i, item := range schema.Items {
-		fieldName := fmt.Sprintf("Field%d", i)
+		fieldName := fieldNames[i]
 		g.writeTupleFieldEquals(fieldName, item)
 	}
 
